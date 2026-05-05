@@ -237,10 +237,11 @@ function StepShifts({ name, absent, shifts, setShifts, onBack, onSubmit, saving 
                       <button key={s.id} onClick={()=>toggleShift(day,s.id)} style={{
                         width:"100%",padding:"3px 1px",borderRadius:4,
                         border: on?`2px solid ${s.color}`:"2px solid #3a3a3a",
-                        background: on?s.color:"#1a1a1a",
+                        background: on?s.color:"#f0f0ea",
                         color: on?s.text:"#555",
                         fontSize:7,fontWeight:800,cursor:"pointer",
                         fontFamily:"'Josefin Sans',sans-serif",lineHeight:1.3,textAlign:"center",
+                        border: on?`2px solid ${s.color}`:"2px solid #ddd",
                       }}>
                         {shiftLabel(dow,s.id)}
                       </button>
