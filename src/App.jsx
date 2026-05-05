@@ -287,10 +287,19 @@ function Admin({ onBack }) {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied]   = useState(false);
   const [view, setView]       = useState("calendar"); // calendar | export
+  const [confirmDelete, setConfirmDelete] = useState(null); // nome da eliminare
 
   useEffect(()=>{
     sbAll().then(d=>{ setData(Array.isArray(d)?d:[]); setLoading(false); });
   },[]);
+
+  async function handleDelete(nome) {
+    await fetch(`${SB_URL}/rest/v1/${TABLE}?nome=eq.${encodeURIComponent(nome)}`, {
+      method: "DELETE", headers: H,
+    });
+    setData(data.filter(r=>r.nome!==nome));
+    setConfirmDelete(null);
+  }
 
   const m = MONTHS[mi];
   const weeks = buildWeeks(m.id);
@@ -387,14 +396,38 @@ function Admin({ onBack }) {
           },0);
           const upd = r.aggiornato_il ? new Date(r.aggiornato_il).toLocaleDateString("it-IT",{day:"2-digit",month:"2-digit"}) : "—";
           return (
-            <div key={r.nome} style={{background:"#fff",border:"2px solid #F5C200",borderRadius:8,padding:"6px 12px",boxShadow:"0 1px 4px #0000000a"}}>
-              <div style={{color:"#1a1a1a",fontSize:12,fontWeight:700}}>{r.nome}</div>
-              <div style={{color:"#aaa",fontSize:9}}>{tot} preferenze · agg. {upd}</div>
+            <div key={r.nome} style={{background:"#fff",border:"2px solid #F5C200",borderRadius:8,padding:"6px 10px",boxShadow:"0 1px 4px #0000000a",display:"flex",alignItems:"center",gap:8}}>
+              <div>
+                <div style={{color:"#1a1a1a",fontSize:12,fontWeight:700}}>{r.nome}</div>
+                <div style={{color:"#aaa",fontSize:9}}>{tot} preferenze · agg. {upd}</div>
+              </div>
+              <button onClick={()=>setConfirmDelete(r.nome)} style={{background:"none",border:"none",cursor:"pointer",color:"#e63946",fontSize:14,padding:"2px 4px",lineHeight:1}} title="Elimina">✕</button>
             </div>
           );
         })}
         {data.length===0 && <div style={{color:"#ccc",fontSize:12}}>Nessun dato ancora</div>}
       </div>
+
+      {/* Confirm delete modal */}
+      {confirmDelete && (
+        <div style={{position:"fixed",inset:0,background:"#00000060",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:24}}>
+          <div style={{background:"#fff",borderRadius:14,padding:"28px 24px",maxWidth:320,width:"100%",boxShadow:"0 8px 32px #00000030",fontFamily:"'Josefin Sans',sans-serif"}}>
+            <div style={{fontSize:32,textAlign:"center",marginBottom:12}}>🗑️</div>
+            <div style={{color:"#1a1a1a",fontSize:15,fontWeight:800,textAlign:"center",marginBottom:8}}>Elimina bagnino</div>
+            <div style={{color:"#888",fontSize:13,textAlign:"center",marginBottom:24,lineHeight:1.6}}>
+              Vuoi eliminare tutti i dati di<br/><strong style={{color:"#1a1a1a"}}>{confirmDelete}</strong>?<br/>L'operazione non è reversibile.
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setConfirmDelete(null)} style={{flex:1,padding:"11px",background:"#f0f0ea",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",color:"#888"}}>
+                Annulla
+              </button>
+              <button onClick={()=>handleDelete(confirmDelete)} style={{flex:1,padding:"11px",background:"#e63946",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",color:"#fff"}}>
+                Elimina
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* EXPORT VIEW */}
       {view==="export" && (
