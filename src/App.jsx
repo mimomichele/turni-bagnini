@@ -229,8 +229,8 @@ function StepShifts({ name, absent, shifts, setShifts, onBack, onSubmit, saving 
               );
 
               return (
-                <div key={ci} style={{flex:1,background:we?"#2a2500":"#2a2a2a",borderRadius:6,padding:"4px 2px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:0}}>
-                  <span style={{...S.cellNum,...(we?{color:"#F5C200"}:{})}}>{day}</span>
+                <div key={ci} style={{flex:1,background:we?"#fffbea":"#fff",borderRadius:6,padding:"4px 2px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:0,border:`1px solid ${we?"#f5e070":"#e8e8e2"}`,boxShadow:"0 1px 3px #0000000a"}}>
+                  <span style={{...S.cellNum,...(we?{color:"#c79500"}:{color:"#1a1a1a"})}}>{day}</span>
                   {dayShifts.map(s=>{
                     const on = selected===s.id;
                     return (
@@ -267,14 +267,14 @@ function StepShifts({ name, absent, shifts, setShifts, onBack, onSubmit, saving 
 // ─── DONE ─────────────────────────────────────────────────────────────────
 function Done({ name, onEdit }) {
   return (
-    <div style={{...S.page,alignItems:"center",justifyContent:"center",textAlign:"center",padding:32}}>
+    <div style={{minHeight:"100vh",background:"#f5f5f0",fontFamily:"'Josefin Sans',sans-serif",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center",padding:32}}>
       <div style={{fontSize:60,marginBottom:16}}>🌊</div>
-      <div style={{color:"#F5C200",fontSize:10,letterSpacing:3,fontWeight:700,marginBottom:6}}>ASC HOTEL · PISCINA</div>
-      <div style={{color:"#fff",fontSize:28,fontWeight:800,marginBottom:10}}>Grazie, {name}!</div>
-      <div style={{color:"#555",fontSize:14,maxWidth:280,lineHeight:1.8,marginBottom:36}}>
+      <div style={{color:"#c79500",fontSize:10,letterSpacing:3,fontWeight:700,marginBottom:6}}>ASC HOTEL · PISCINA</div>
+      <div style={{color:"#1a1a1a",fontSize:28,fontWeight:800,marginBottom:10}}>Grazie, {name}!</div>
+      <div style={{color:"#888",fontSize:14,maxWidth:280,lineHeight:1.8,marginBottom:36}}>
         Le tue preferenze sono state salvate.<br/>Puoi rientrare in qualsiasi momento per modificarle.
       </div>
-      <button onClick={onEdit} style={{...S.btnY,background:"transparent",border:"2px solid #333",color:"#888",fontSize:13,padding:"12px 28px"}}>
+      <button onClick={onEdit} style={{background:"transparent",border:"2px solid #e0e0d8",color:"#888",fontSize:13,padding:"12px 28px",borderRadius:10,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",fontWeight:700}}>
         ✏️ Modifica preferenze
       </button>
     </div>
@@ -366,16 +366,16 @@ function Admin({ onBack }) {
   );
 
   return (
-    <div style={{...S.page,background:"#0d0d0d"}}>
-      <div style={{...S.bar,borderBottom:"2px solid #F5C200"}}>
+    <div style={{...S.page,background:"#f5f5f0"}}>
+      <div style={{...S.bar,borderBottom:"3px solid #F5C200"}}>
         <button onClick={onBack} style={S.back}>←</button>
         <div style={{flex:1}}>
           <div style={S.barLabel}>Admin · ASC Hotel Piscina</div>
           <div style={S.barName}>Turni 2025</div>
         </div>
         <div style={{display:"flex",gap:6}}>
-          <button onClick={()=>setView("calendar")} style={{...S.pill,cursor:"pointer",background:view==="calendar"?"#F5C200":"#2a2a2a",color:view==="calendar"?"#1a1a1a":"#666"}}>📅</button>
-          <button onClick={()=>setView("export")}   style={{...S.pill,cursor:"pointer",background:view==="export"?"#16a34a":"#2a2a2a",color:view==="export"?"#fff":"#666"}}>AI</button>
+          <button onClick={()=>setView("calendar")} style={{...S.pill,cursor:"pointer",background:view==="calendar"?"#F5C200":"#f0f0ea",color:view==="calendar"?"#1a1a1a":"#aaa"}}>📅</button>
+          <button onClick={()=>setView("export")}   style={{...S.pill,cursor:"pointer",background:view==="export"?"#16a34a":"#f0f0ea",color:view==="export"?"#fff":"#aaa"}}>AI</button>
         </div>
       </div>
 
@@ -388,19 +388,19 @@ function Admin({ onBack }) {
           },0);
           const upd = r.aggiornato_il ? new Date(r.aggiornato_il).toLocaleDateString("it-IT",{day:"2-digit",month:"2-digit"}) : "—";
           return (
-            <div key={r.nome} style={{background:"#1a1a1a",border:"1px solid #2a2a2a",borderRadius:8,padding:"6px 12px"}}>
-              <div style={{color:"#F5C200",fontSize:12,fontWeight:700}}>{r.nome}</div>
-              <div style={{color:"#444",fontSize:9}}>{tot} preferenze · agg. {upd}</div>
+            <div key={r.nome} style={{background:"#fff",border:"2px solid #F5C200",borderRadius:8,padding:"6px 12px",boxShadow:"0 1px 4px #0000000a"}}>
+              <div style={{color:"#1a1a1a",fontSize:12,fontWeight:700}}>{r.nome}</div>
+              <div style={{color:"#aaa",fontSize:9}}>{tot} preferenze · agg. {upd}</div>
             </div>
           );
         })}
-        {data.length===0 && <div style={{color:"#333",fontSize:12}}>Nessun dato ancora</div>}
+        {data.length===0 && <div style={{color:"#ccc",fontSize:12}}>Nessun dato ancora</div>}
       </div>
 
       {/* EXPORT VIEW */}
       {view==="export" && (
         <div style={{padding:"12px 14px 32px",flex:1,display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{background:"#1a1a1a",border:"1px solid #16a34a",borderRadius:12,padding:"16px"}}>
+          <div style={{background:"#fff",border:"2px solid #16a34a",borderRadius:12,padding:"16px",boxShadow:"0 1px 4px #0000000a"}}>
             <div style={{color:"#16a34a",fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:6}}>ANALISI AI CON CLAUDE</div>
             <div style={{color:"#888",fontSize:12,lineHeight:1.7,marginBottom:12}}>
               Copia il report qui sotto e incollalo in una nuova chat con Claude. Chiedi di creare i turni ottimali rispettando le preferenze e garantendo la copertura minima.
@@ -409,7 +409,7 @@ function Admin({ onBack }) {
               {copied ? "✓ Copiato negli appunti!" : "📋 Copia report per Claude"}
             </button>
           </div>
-          <div style={{background:"#111",borderRadius:10,padding:"12px",fontFamily:"monospace",fontSize:10,color:"#555",maxHeight:400,overflowY:"auto",lineHeight:1.6,whiteSpace:"pre-wrap"}}>
+          <div style={{background:"#f0f0ea",borderRadius:10,padding:"12px",fontFamily:"monospace",fontSize:10,color:"#888",maxHeight:400,overflowY:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",border:"1px solid #e0e0d8"}}>
             {buildExport()}
           </div>
         </div>
@@ -421,25 +421,25 @@ function Admin({ onBack }) {
           <div style={{...S.tabs,marginTop:8}}>
             {MONTHS.map((mo,i)=>(
               <button key={mo.id} onClick={()=>setMi(i)} style={{
-                ...S.tab,...(i===mi?S.tabOn:{background:"#1a1a1a",color:"#555",border:"2px solid #2a2a2a"}),
+                ...S.tab,...(i===mi?S.tabOn:{}),
               }}>{mo.short}</button>
             ))}
           </div>
 
           <div style={{display:"flex",gap:12,padding:"8px 14px",flexWrap:"wrap"}}>
-            {[["#2a1010","Scoperto"],["#2a2800","1 bagnino"],["#0a2a10","≥2 bagnini"]].map(([c,l])=>(
+            {[["#fee2e2","Scoperto"],["#fef9c3","1 bagnino"],["#dcfce7","≥2 bagnini"]].map(([c,l])=>(
               <div key={l} style={{display:"flex",alignItems:"center",gap:5}}>
-                <div style={{width:10,height:10,background:c,borderRadius:2,border:"1px solid #333"}}/>
-                <span style={{color:"#444",fontSize:10}}>{l}</span>
+                <div style={{width:10,height:10,background:c,borderRadius:2,border:"1px solid #ddd"}}/>
+                <span style={{color:"#aaa",fontSize:10}}>{l}</span>
               </div>
             ))}
           </div>
 
           <div style={{...S.cal,background:"transparent"}}>
-            <div style={{...S.calTitle,color:"#F5C200"}}>{m.name} 2025</div>
+            <div style={{...S.calTitle}}>{m.name} 2025</div>
             <div style={S.row}>
               {WEEK_LABELS.map((l,i)=>(
-                <div key={i} style={{...S.hdr,background:"#1a1a1a",color:i>=5?"#F5C200":"#444",border:"1px solid #1e1e1e"}}>{l}</div>
+                <div key={i} style={{...S.hdr,...(i>=5?S.hdrWE:{})}}>{l}</div>
               ))}
             </div>
             {weeks.map((wk,wi)=>(
@@ -448,9 +448,11 @@ function Admin({ onBack }) {
                   if(!day) return <div key={ci} style={{flex:1}}/>;
                   const {byShift,off,defs,dow} = dayInfo(day);
                   const we = isWE(m.id,day);
+                  const {total} = dayInfo(day);
+                  const bg = total===0?"#fee2e2":total===1?"#fef9c3":"#dcfce7";
                   return (
-                    <div key={ci} style={{flex:1,minWidth:0,background:covBg(day),border:`1px solid ${we?"#2a2200":"#1e1e1e"}`,borderRadius:5,padding:"3px 2px"}}>
-                      <div style={{color:we?"#F5C200":"#555",fontSize:9,fontWeight:800,textAlign:"center",marginBottom:2}}>{day}</div>
+                    <div key={ci} style={{flex:1,minWidth:0,background:bg,border:`1px solid ${we?"#f5e070":"#e8e8e2"}`,borderRadius:5,padding:"3px 2px"}}>
+                      <div style={{color:we?"#c79500":"#888",fontSize:9,fontWeight:800,textAlign:"center",marginBottom:2}}>{day}</div>
                       {defs.map(s=>{
                         const ppl=byShift[s.id]||[];
                         if(!ppl.length) return null;
@@ -458,7 +460,7 @@ function Admin({ onBack }) {
                           <div key={s.id} style={{marginBottom:2}}>
                             <div style={{background:s.color,borderRadius:2,padding:"1px 2px",fontSize:7,fontWeight:800,color:s.text,textAlign:"center"}}>{shiftLabel(dow,s.id)}</div>
                             {ppl.map(p=>(
-                              <div key={p} style={{background:"#ffffff10",borderRadius:2,padding:"0 2px",fontSize:7,color:"#bbb",textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>
+                              <div key={p} style={{background:"#00000010",borderRadius:2,padding:"0 2px",fontSize:7,color:"#555",textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>
                                 {p.split(" ")[0]}
                               </div>
                             ))}
@@ -484,29 +486,29 @@ function Admin({ onBack }) {
 
 // ─── STYLES ───────────────────────────────────────────────────────────────
 const S = {
-  page:    {minHeight:"100vh",background:"#1a1a1a",fontFamily:"'Josefin Sans',sans-serif",display:"flex",flexDirection:"column"},
-  bar:     {background:"#111",padding:"14px 18px",display:"flex",alignItems:"center",gap:10},
-  barLabel:{color:"#F5C200",fontSize:9,fontWeight:700,letterSpacing:2,textTransform:"uppercase"},
-  barName: {color:"#fff",fontSize:19,fontWeight:800,lineHeight:1.1},
-  pill:    {background:"#2a2a2a",color:"#666",fontSize:9,fontWeight:700,padding:"4px 10px",borderRadius:20,flexShrink:0,letterSpacing:1},
-  back:    {background:"none",border:"none",color:"#F5C200",fontSize:22,cursor:"pointer",paddingRight:8},
-  infoBox: {display:"flex",alignItems:"center",gap:12,padding:"14px 18px",background:"#222",margin:"10px 14px",borderRadius:12},
-  infoTitle:{color:"#fff",fontSize:13,fontWeight:700,marginBottom:2},
-  infoSub: {color:"#666",fontSize:11},
+  page:    {minHeight:"100vh",background:"#f5f5f0",fontFamily:"'Josefin Sans',sans-serif",display:"flex",flexDirection:"column"},
+  bar:     {background:"#fff",padding:"14px 18px",display:"flex",alignItems:"center",gap:10,borderBottom:"3px solid #F5C200",boxShadow:"0 2px 8px #0000000a"},
+  barLabel:{color:"#c79500",fontSize:9,fontWeight:700,letterSpacing:2,textTransform:"uppercase"},
+  barName: {color:"#1a1a1a",fontSize:19,fontWeight:800,lineHeight:1.1},
+  pill:    {background:"#f0f0ea",color:"#888",fontSize:9,fontWeight:700,padding:"4px 10px",borderRadius:20,flexShrink:0,letterSpacing:1},
+  back:    {background:"none",border:"none",color:"#1a1a1a",fontSize:22,cursor:"pointer",paddingRight:8},
+  infoBox: {display:"flex",alignItems:"center",gap:12,padding:"14px 18px",background:"#fffbea",border:"1px solid #F5C200",margin:"10px 14px",borderRadius:12},
+  infoTitle:{color:"#1a1a1a",fontSize:13,fontWeight:700,marginBottom:2},
+  infoSub: {color:"#888",fontSize:11},
   tabs:    {display:"flex",gap:6,padding:"0 14px",overflowX:"auto"},
-  tab:     {padding:"6px 14px",borderRadius:20,border:"2px solid #333",background:"#2a2a2a",color:"#888",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",whiteSpace:"nowrap",position:"relative",flexShrink:0},
+  tab:     {padding:"6px 14px",borderRadius:20,border:"2px solid #e0e0d8",background:"#fff",color:"#aaa",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",whiteSpace:"nowrap",position:"relative",flexShrink:0},
   tabOn:   {border:"2px solid #F5C200",background:"#F5C200",color:"#1a1a1a"},
   badge:   {position:"absolute",top:-6,right:-6,borderRadius:"50%",width:15,height:15,fontSize:8,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,color:"#fff"},
   cal:     {padding:"10px 8px 90px",flex:1},
-  calTitle:{color:"#fff",fontSize:15,fontWeight:800,padding:"6px 8px 8px",letterSpacing:0.5},
+  calTitle:{color:"#1a1a1a",fontSize:15,fontWeight:800,padding:"6px 8px 8px",letterSpacing:0.5},
   row:     {display:"flex",gap:2,marginBottom:2},
-  hdr:     {flex:1,textAlign:"center",fontSize:8,fontWeight:800,color:"#444",padding:"4px 0",background:"#222",borderRadius:3,letterSpacing:0.5},
-  hdrWE:   {color:"#F5C200"},
-  cell:    {flex:1,aspectRatio:"1",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#2a2a2a",borderRadius:6,border:"2px solid transparent",cursor:"pointer",position:"relative",minHeight:36,gap:1},
-  cellWE:  {background:"#2a2500"},
-  cellOff: {background:"#2a1010",border:"2px solid #e6394640"},
-  cellNum: {fontSize:12,fontWeight:800,color:"#fff",lineHeight:1},
-  footer:  {position:"fixed",bottom:0,left:0,right:0,padding:"10px 14px",background:"#111",borderTop:"1px solid #222",display:"flex",flexDirection:"column",gap:6},
+  hdr:     {flex:1,textAlign:"center",fontSize:8,fontWeight:800,color:"#aaa",padding:"4px 0",background:"#e8e8e2",borderRadius:3,letterSpacing:0.5},
+  hdrWE:   {color:"#c79500"},
+  cell:    {flex:1,aspectRatio:"1",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#fff",borderRadius:6,border:"2px solid #e8e8e2",cursor:"pointer",position:"relative",minHeight:36,gap:1,boxShadow:"0 1px 3px #0000000a"},
+  cellWE:  {background:"#fffbea",border:"2px solid #f5e070"},
+  cellOff: {background:"#fff0f0",border:"2px solid #fca5a5"},
+  cellNum: {fontSize:12,fontWeight:800,color:"#1a1a1a",lineHeight:1},
+  footer:  {position:"fixed",bottom:0,left:0,right:0,padding:"10px 14px",background:"#fff",borderTop:"1px solid #e8e8e2",display:"flex",flexDirection:"column",gap:6,boxShadow:"0 -2px 12px #0000000d"},
   btnY:    {padding:"13px",background:"#F5C200",color:"#1a1a1a",border:"none",borderRadius:10,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif"},
 };
 
@@ -550,42 +552,42 @@ export default function App() {
   if(screen==="admin") return <Admin onBack={()=>setScreen("home")}/>;
 
   if(screen==="adminLogin") return (
-    <div style={{minHeight:"100vh",background:"#1a1a1a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Josefin Sans',sans-serif",padding:24}}>
-      <div style={{color:"#F5C200",fontSize:10,letterSpacing:3,fontWeight:700,marginBottom:6}}>AREA RISERVATA</div>
-      <div style={{color:"#fff",fontSize:24,fontWeight:800,marginBottom:28}}>Admin · Piscina 2025</div>
+    <div style={{minHeight:"100vh",background:"#f5f5f0",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Josefin Sans',sans-serif",padding:24}}>
+      <div style={{color:"#c79500",fontSize:10,letterSpacing:3,fontWeight:700,marginBottom:6}}>AREA RISERVATA</div>
+      <div style={{color:"#1a1a1a",fontSize:24,fontWeight:800,marginBottom:28}}>Admin · Piscina 2025</div>
       <input type="password" placeholder="Codice accesso" value={adminPw} onChange={e=>setAdminPw(e.target.value)}
         onKeyDown={e=>e.key==="Enter"&&tryAdmin()}
-        style={{width:"100%",maxWidth:300,padding:"12px 16px",borderRadius:8,border:"2px solid #333",background:"#2a2a2a",color:"#fff",fontSize:15,fontFamily:"'Josefin Sans',sans-serif",outline:"none",marginBottom:8,boxSizing:"border-box"}}/>
+        style={{width:"100%",maxWidth:300,padding:"12px 16px",borderRadius:8,border:"2px solid #e0e0d8",background:"#fff",color:"#1a1a1a",fontSize:15,fontFamily:"'Josefin Sans',sans-serif",outline:"none",marginBottom:8,boxSizing:"border-box"}}/>
       {adminErr && <div style={{color:"#e63946",fontSize:12,marginBottom:8}}>{adminErr}</div>}
       <button onClick={tryAdmin} style={{width:"100%",maxWidth:300,padding:13,background:"#F5C200",color:"#1a1a1a",border:"none",borderRadius:8,fontSize:15,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>Accedi</button>
-      <button onClick={()=>setScreen("home")} style={{marginTop:14,background:"none",border:"none",color:"#555",cursor:"pointer",fontSize:12,fontFamily:"'Josefin Sans',sans-serif"}}>← Indietro</button>
+      <button onClick={()=>setScreen("home")} style={{marginTop:14,background:"none",border:"none",color:"#aaa",cursor:"pointer",fontSize:12,fontFamily:"'Josefin Sans',sans-serif"}}>← Indietro</button>
     </div>
   );
 
   // HOME
   return (
-    <div style={{minHeight:"100vh",background:"#1a1a1a",fontFamily:"'Josefin Sans',sans-serif",display:"flex",flexDirection:"column"}}>
-      <div style={{background:"linear-gradient(150deg,#1a1a1a 55%,#0a1a0a)",padding:"44px 26px 36px",borderBottom:"3px solid #F5C200"}}>
+    <div style={{minHeight:"100vh",background:"#f5f5f0",fontFamily:"'Josefin Sans',sans-serif",display:"flex",flexDirection:"column"}}>
+      <div style={{background:"#1a1a1a",padding:"44px 26px 36px",borderBottom:"3px solid #F5C200"}}>
         <div style={{color:"#F5C200",fontSize:10,fontWeight:700,letterSpacing:3,textTransform:"uppercase",marginBottom:6}}>ASC Hotel · Piscina</div>
         <div style={{color:"#fff",fontSize:38,fontWeight:800,lineHeight:1.0,marginBottom:8}}>Turni<br/>Estivi 2025</div>
-        <div style={{color:"#555",fontSize:12,letterSpacing:1}}>GIU · LUG · AGO · SET</div>
+        <div style={{color:"#888",fontSize:12,letterSpacing:1}}>GIU · LUG · AGO · SET</div>
       </div>
       <div style={{padding:"32px 22px",flex:1,display:"flex",flexDirection:"column",gap:18}}>
         <div>
-          <div style={{color:"#555",fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Il tuo nome</div>
+          <div style={{color:"#888",fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Il tuo nome</div>
           <input
             placeholder="Es. Marco Rossi"
             value={name}
             onChange={e=>{setName(e.target.value);setNameErr("");}}
             onKeyDown={e=>e.key==="Enter"&&handleStart()}
-            style={{width:"100%",padding:"14px 16px",borderRadius:10,border:`2px solid ${nameErr?"#e63946":"#2a2a2a"}`,background:"#2a2a2a",color:"#fff",fontSize:16,fontFamily:"'Josefin Sans',sans-serif",outline:"none",boxSizing:"border-box"}}
+            style={{width:"100%",padding:"14px 16px",borderRadius:10,border:`2px solid ${nameErr?"#e63946":"#e0e0d8"}`,background:"#fff",color:"#1a1a1a",fontSize:16,fontFamily:"'Josefin Sans',sans-serif",outline:"none",boxSizing:"border-box",boxShadow:"0 1px 4px #0000000a"}}
           />
           {nameErr && <div style={{color:"#e63946",fontSize:12,marginTop:5}}>{nameErr}</div>}
-          <div style={{color:"#444",fontSize:11,marginTop:6}}>Se hai già inserito le preferenze, il tuo nome le ricaricherà automaticamente.</div>
+          <div style={{color:"#bbb",fontSize:11,marginTop:6}}>Se hai già inserito le preferenze, il tuo nome le ricaricherà automaticamente.</div>
         </div>
         <button onClick={handleStart} style={{...S.btnY,fontSize:16}}>Inizia →</button>
-        <div style={{borderTop:"1px solid #222",paddingTop:22}}>
-          <button onClick={()=>setScreen("adminLogin")} style={{width:"100%",padding:12,background:"transparent",color:"#F5C200",border:"2px solid #2a2a2a",borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>
+        <div style={{borderTop:"1px solid #e0e0d8",paddingTop:22}}>
+          <button onClick={()=>setScreen("adminLogin")} style={{width:"100%",padding:12,background:"transparent",color:"#1a1a1a",border:"2px solid #e0e0d8",borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>
             🔒 Area Admin
           </button>
         </div>
