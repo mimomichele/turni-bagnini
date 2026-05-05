@@ -235,13 +235,12 @@ function StepShifts({ name, absent, shifts, setShifts, onBack, onSubmit, saving 
                     const on = selected===s.id;
                     return (
                       <button key={s.id} onClick={()=>toggleShift(day,s.id)} style={{
-                        width:"100%",padding:"3px 1px",borderRadius:4,
-                        border: on?`2px solid ${s.color}`:"2px solid #3a3a3a",
-                        background: on?s.color:"#f0f0ea",
-                        color: on?s.text:"#555",
-                        fontSize:7,fontWeight:800,cursor:"pointer",
-                        fontFamily:"'Josefin Sans',sans-serif",lineHeight:1.3,textAlign:"center",
+                        width:"100%",padding:"4px 2px",borderRadius:4,
                         border: on?`2px solid ${s.color}`:"2px solid #ddd",
+                        background: on?s.color:"#f0f0ea",
+                        color: on?s.text:"#444",
+                        fontSize:10,fontWeight:800,cursor:"pointer",
+                        fontFamily:"'Josefin Sans',sans-serif",lineHeight:1.4,textAlign:"center",
                       }}>
                         {shiftLabel(dow,s.id)}
                       </button>
@@ -508,7 +507,7 @@ const S = {
   cell:    {flex:1,aspectRatio:"1",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#fff",borderRadius:6,border:"2px solid #e8e8e2",cursor:"pointer",position:"relative",minHeight:36,gap:1,boxShadow:"0 1px 3px #0000000a"},
   cellWE:  {background:"#fffbea",border:"2px solid #f5e070"},
   cellOff: {background:"#fff0f0",border:"2px solid #fca5a5"},
-  cellNum: {fontSize:12,fontWeight:800,color:"#1a1a1a",lineHeight:1},
+  cellNum: {fontSize:16,fontWeight:800,color:"#1a1a1a",lineHeight:1},
   footer:  {position:"fixed",bottom:0,left:0,right:0,padding:"10px 14px",background:"#fff",borderTop:"1px solid #e8e8e2",display:"flex",flexDirection:"column",gap:6,boxShadow:"0 -2px 12px #0000000d"},
   btnY:    {padding:"13px",background:"#F5C200",color:"#1a1a1a",border:"none",borderRadius:10,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif"},
 };
