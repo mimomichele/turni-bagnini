@@ -52,24 +52,23 @@ function getDow(month, day) { return new Date(YEAR, month - 1, day).getDay(); }
 function isWE(month, day)   { const d = getDow(month,day); return d===0||d===6; }
 
 function getShifts(dow) {
-  if (dow === 4) return [
-    { id:"A", label:"11:00 – 18:00", color:"#16a34a", text:"#fff" },
+  if (dow === 4) return [  // Giovedì
+    { id:"A", label:"12:00 – 18:00", color:"#16a34a", text:"#fff" },
   ];
-  if (dow === 6 || dow === 0) return [
-    { id:"A", label:"09:00 – 15:30", color:"#16a34a", text:"#fff" },
-    { id:"B", label:"15:30 – 20:30", color:"#065f46", text:"#fff" },
+  if (dow === 6 || dow === 0) return [  // Sabato e Domenica
+    { id:"A", label:"09:00 – 14:30", color:"#16a34a", text:"#fff" },
+    { id:"B", label:"14:30 – 20:00", color:"#065f46", text:"#fff" },
+    { id:"C", label:"09:00 – 20:00", color:"#052e16", text:"#86efac" },
   ];
-  return [
-    { id:"A", label:"11:00 – 15:00", color:"#16a34a", text:"#fff" },
-    { id:"B", label:"15:00 – 20:00", color:"#065f46", text:"#fff" },
-    { id:"C", label:"11:00 – 20:00", color:"#052e16", text:"#86efac" },
+  return [  // Lun Mar Mer Ven
+    { id:"A", label:"12:00 – 19:00", color:"#16a34a", text:"#fff" },
   ];
 }
 
 function shiftLabel(dow, sid) {
-  if (dow === 4) return "11–18";
-  if (dow === 6 || dow === 0) return sid === "A" ? "9–15:30" : "15:30–20:30";
-  return sid === "A" ? "11–15" : sid === "B" ? "15–20" : "11–20";
+  if (dow === 4) return "12–18";
+  if (dow === 6 || dow === 0) return sid === "A" ? "9–14:30" : sid === "B" ? "14:30–20" : "9–20";
+  return "12–19";
 }
 
 function buildWeeks(month) {
@@ -190,7 +189,7 @@ function StepShifts({ name, absent, shifts, setShifts, onBack, onSubmit, saving 
         <span style={{fontSize:26}}>⏰</span>
         <div>
           <div style={S.infoTitle}>Indica i turni <em>preferiti</em></div>
-          <div style={S.infoSub}>Un turno per giorno. Gio: 11–18 · Sab/Dom: 09–15:30 o 15:30–20:30.</div>
+          <div style={S.infoSub}>Un turno per giorno. Lun/Mar/Mer/Ven: 12–19 · Gio: 12–18 · Sab/Dom: 3 opzioni.</div>
         </div>
       </div>
       <div style={S.tabs}>
