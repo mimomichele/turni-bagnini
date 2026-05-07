@@ -37,7 +37,7 @@ async function sbAll() {
 }
 
 // ─── CALENDAR CONFIG ───────────────────────────────────────────────────────
-const YEAR = 2025;
+const YEAR = 2026;
 const MONTHS = [
   { id: 6, name: "Giugno",    short: "GIU", days: 30 },
   { id: 7, name: "Luglio",    short: "LUG", days: 31 },
@@ -100,7 +100,7 @@ function StepAbsent({ name, absent, setAbsent, onNext }) {
     <div style={S.page}>
       <div style={S.bar}>
         <div style={{flex:1}}>
-          <div style={S.barLabel}>Turni Estivi 2025</div>
+          <div style={S.barLabel}>Turni Estivi 2026</div>
           <div style={S.barName}>{name}</div>
         </div>
         <div style={S.pill}>1 / 2</div>
@@ -124,7 +124,7 @@ function StepAbsent({ name, absent, setAbsent, onNext }) {
         })}
       </div>
       <div style={S.cal}>
-        <div style={S.calTitle}>{m.name} 2025</div>
+        <div style={S.calTitle}>{m.name} 2026</div>
         <div style={S.row}>
           {WEEK_LABELS.map((l,i)=>(
             <div key={i} style={{...S.hdr,...(i>=5?S.hdrWE:{})}}>{l}</div>
@@ -180,7 +180,7 @@ function StepShifts({ name, absent, shifts, setShifts, onBack, onSubmit, saving 
       <div style={S.bar}>
         <button onClick={onBack} style={S.back}>←</button>
         <div style={{flex:1}}>
-          <div style={S.barLabel}>Turni Estivi 2025</div>
+          <div style={S.barLabel}>Turni Estivi 2026</div>
           <div style={S.barName}>{name}</div>
         </div>
         <div style={S.pill}>2 / 2</div>
@@ -204,7 +204,7 @@ function StepShifts({ name, absent, shifts, setShifts, onBack, onSubmit, saving 
         })}
       </div>
       <div style={S.cal}>
-        <div style={S.calTitle}>{m.name} 2025</div>
+        <div style={S.calTitle}>{m.name} 2026</div>
         <div style={S.row}>
           {WEEK_LABELS.map((l,i)=>(
             <div key={i} style={{...S.hdr,...(i>=5?S.hdrWE:{})}}>{l}</div>
@@ -328,7 +328,7 @@ function Admin({ onBack }) {
 
   // Build export text for Claude analysis
   function buildExport() {
-    let txt = `# Preferenze Turni Bagnini — Estate 2025\n\n`;
+    let txt = `# Preferenze Turni Bagnini — Estate 2026\n\n`;
     txt += `Bagnini: ${names.join(", ")}\n\n`;
     txt += `## Turni per fascia oraria:\n`;
     txt += `- Lun/Mar/Mer/Ven: A=11–15, B=15–20, C=11–20\n`;
@@ -379,7 +379,7 @@ function Admin({ onBack }) {
         <button onClick={onBack} style={S.back}>←</button>
         <div style={{flex:1}}>
           <div style={S.barLabel}>Admin · ASC Hotel Piscina</div>
-          <div style={S.barName}>Turni 2025</div>
+          <div style={S.barName}>Turni 2026</div>
         </div>
         <div style={{display:"flex",gap:6}}>
           <button onClick={()=>setView("calendar")} style={{...S.pill,cursor:"pointer",background:view==="calendar"?"#F5C200":"#f0f0ea",color:view==="calendar"?"#1a1a1a":"#aaa"}}>📅</button>
@@ -468,7 +468,7 @@ function Admin({ onBack }) {
           </div>
 
           <div style={{...S.cal,background:"transparent"}}>
-            <div style={{...S.calTitle}}>{m.name} 2025</div>
+            <div style={{...S.calTitle}}>{m.name} 2026</div>
             <div style={S.row}>
               {WEEK_LABELS.map((l,i)=>(
                 <div key={i} style={{...S.hdr,...(i>=5?S.hdrWE:{})}}>{l}</div>
@@ -586,7 +586,7 @@ export default function App() {
   if(screen==="adminLogin") return (
     <div style={{minHeight:"100vh",background:"#f5f5f0",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Josefin Sans',sans-serif",padding:24}}>
       <div style={{color:"#c79500",fontSize:10,letterSpacing:3,fontWeight:700,marginBottom:6}}>AREA RISERVATA</div>
-      <div style={{color:"#1a1a1a",fontSize:24,fontWeight:800,marginBottom:28}}>Admin · Piscina 2025</div>
+      <div style={{color:"#1a1a1a",fontSize:24,fontWeight:800,marginBottom:28}}>Admin · Piscina 2026</div>
       <input type="password" placeholder="Codice accesso" value={adminPw} onChange={e=>setAdminPw(e.target.value)}
         onKeyDown={e=>e.key==="Enter"&&tryAdmin()}
         style={{width:"100%",maxWidth:300,padding:"12px 16px",borderRadius:8,border:"2px solid #e0e0d8",background:"#fff",color:"#1a1a1a",fontSize:15,fontFamily:"'Josefin Sans',sans-serif",outline:"none",marginBottom:8,boxSizing:"border-box"}}/>
@@ -601,7 +601,7 @@ export default function App() {
     <div style={{minHeight:"100vh",background:"#f5f5f0",fontFamily:"'Josefin Sans',sans-serif",display:"flex",flexDirection:"column"}}>
       <div style={{background:"#1a1a1a",padding:"44px 26px 36px",borderBottom:"3px solid #F5C200"}}>
         <div style={{color:"#F5C200",fontSize:10,fontWeight:700,letterSpacing:3,textTransform:"uppercase",marginBottom:6}}>ASC Hotel · Piscina</div>
-        <div style={{color:"#fff",fontSize:38,fontWeight:800,lineHeight:1.0,marginBottom:8}}>Turni<br/>Estivi 2025</div>
+        <div style={{color:"#fff",fontSize:38,fontWeight:800,lineHeight:1.0,marginBottom:8}}>Turni<br/>Estivi 2026</div>
         <div style={{color:"#888",fontSize:12,letterSpacing:1}}>GIU · LUG · AGO · SET</div>
       </div>
       <div style={{padding:"32px 22px",flex:1,display:"flex",flexDirection:"column",gap:18}}>
