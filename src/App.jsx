@@ -41,8 +41,20 @@ async function sbUpsert(nome, absent, shifts) {
 }
 
 async function sbAll() {
-  const r = await fetch(`${SB_URL}/rest/v1/${TABLE}?select=*&order=aggiornato_il.desc`, { headers: H_ADMIN });
-  return await r.json();
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const r = await fetch(`${SB_URL}/rest/v1/${TABLE}?select=*&order=aggiornato_il.desc`, { 
+      headers: H,
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch(e) {
+    console.error("sbAll error:", e);
+    return [];
+  }
 }
 
 // ─── CALENDAR CONFIG ───────────────────────────────────────────────────────
@@ -294,12 +306,17 @@ function Admin({ onBack }) {
   const [mi, setMi]       = useState(0);
   const [data, setData]   = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [copied, setCopied]   = useState(false);
-  const [view, setView]       = useState("calendar"); // calendar | export
-  const [confirmDelete, setConfirmDelete] = useState(null); // nome da eliminare
+  const [view, setView]       = useState("calendar");
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   useEffect(()=>{
-    sbAll().then(d=>{ setData(Array.isArray(d)?d:[]); setLoading(false); });
+    sbAll().then(d=>{ 
+      if(Array.isArray(d)) { setData(d); } 
+      else { setLoadError(true); }
+      setLoading(false); 
+    }).catch(()=>{ setLoadError(true); setLoading(false); });
   },[]);
 
   async function handleDelete(nome) {
@@ -377,8 +394,19 @@ function Admin({ onBack }) {
   }
 
   if(loading) return (
-    <div style={{...S.page,alignItems:"center",justifyContent:"center"}}>
+    <div style={{...S.page,alignItems:"center",justifyContent:"center",gap:12}}>
       <div style={{color:"#F5C200",fontFamily:"'Josefin Sans',sans-serif"}}>Caricamento dati…</div>
+    </div>
+  );
+
+  if(loadError) return (
+    <div style={{...S.page,alignItems:"center",justifyContent:"center",gap:16,padding:24}}>
+      <div style={{fontSize:40}}>⚠️</div>
+      <div style={{color:"#1a1a1a",fontSize:16,fontWeight:800,fontFamily:"'Josefin Sans',sans-serif"}}>Errore di connessione</div>
+      <div style={{color:"#888",fontSize:13,textAlign:"center",fontFamily:"'Josefin Sans',sans-serif",lineHeight:1.6}}>
+        Non riesco a caricare i dati da Supabase.<br/>Controlla la console per i dettagli.
+      </div>
+      <button onClick={onBack} style={{...S.btnY,marginTop:8}}>← Torna indietro</button>
     </div>
   );
 
