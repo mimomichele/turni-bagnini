@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 
 // ─── SUPABASE CONFIG ───────────────────────────────────────────────────────
-const SB_URL      = "https://ylneyzemqiksgwjwnbms.supabase.co";
-const SB_KEY      = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlsbmV5emVtcWlrc2d3anduYm1zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5NzIwMTAsImV4cCI6MjA5MzU0ODAxMH0.nv3Be1-5BeCeKAeXUoVzhLfMUrEaFQLqP9jhIWb6t1M";
-const SB_ADMIN_KEY= "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlsbmV5emVtcWlrc2d3anduYm1zIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Nzk3MjAxMCwiZXhwIjoyMDkzNTQ4MDEwfQ.EK8uY-LwRXwT67j5ci1v5pJZlPWFhdK8KIIEvdtfFAA";
+const SB_URL      = import.meta.env.VITE_SUPABASE_URL;
+const SB_KEY      = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const SB_ADMIN_KEY= import.meta.env.VITE_SUPABASE_SERVICE_KEY;
 const TABLE       = "bagnini_preferenze";
 
 const H = {
