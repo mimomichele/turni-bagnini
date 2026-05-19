@@ -1,14 +1,23 @@
 import { useState, useEffect } from "react";
 
 // ─── SUPABASE CONFIG ───────────────────────────────────────────────────────
-const SB_URL  = "https://ylneyzemqiksgwjwnbms.supabase.co";
-const SB_KEY  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlsbmV5emVtcWlrc2d3anduYm1zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5NzIwMTAsImV4cCI6MjA5MzU0ODAxMH0.nv3Be1-5BeCeKAeXUoVzhLfMUrEaFQLqP9jhIWb6t1M";
-const TABLE   = "bagnini_preferenze";
+const SB_URL      = "https://ylneyzemqiksgwjwnbms.supabase.co";
+const SB_KEY      = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlsbmV5emVtcWlrc2d3anduYm1zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5NzIwMTAsImV4cCI6MjA5MzU0ODAxMH0.nv3Be1-5BeCeKAeXUoVzhLfMUrEaFQLqP9jhIWb6t1M";
+const SB_ADMIN_KEY= "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlsbmV5emVtcWlrc2d3anduYm1zIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Nzk3MjAxMCwiZXhwIjoyMDkzNTQ4MDEwfQ.EK8uY-LwRXwT67j5ci1v5pJZlPWFhdK8KIIEvdtfFAA";
+const TABLE       = "bagnini_preferenze";
 
 const H = {
   "Content-Type": "application/json",
   "apikey": SB_KEY,
   "Authorization": `Bearer ${SB_KEY}`,
+  "Prefer": "return=representation",
+};
+
+// Admin headers with service role key — bypasses RLS
+const H_ADMIN = {
+  "Content-Type": "application/json",
+  "apikey": SB_ADMIN_KEY,
+  "Authorization": `Bearer ${SB_ADMIN_KEY}`,
   "Prefer": "return=representation",
 };
 
@@ -32,7 +41,7 @@ async function sbUpsert(nome, absent, shifts) {
 }
 
 async function sbAll() {
-  const r = await fetch(`${SB_URL}/rest/v1/${TABLE}?select=*&order=aggiornato_il.desc`, { headers: H });
+  const r = await fetch(`${SB_URL}/rest/v1/${TABLE}?select=*&order=aggiornato_il.desc`, { headers: H_ADMIN });
   return await r.json();
 }
 
@@ -295,7 +304,7 @@ function Admin({ onBack }) {
 
   async function handleDelete(nome) {
     await fetch(`${SB_URL}/rest/v1/${TABLE}?nome=eq.${encodeURIComponent(nome)}`, {
-      method: "DELETE", headers: H,
+      method: "DELETE", headers: H_ADMIN,
     });
     setData(data.filter(r=>r.nome!==nome));
     setConfirmDelete(null);
