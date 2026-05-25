@@ -92,6 +92,19 @@ function shiftLabel(dow, sid) {
   return "12–19";
 }
 
+// Deterministic color per name (used for staff avatars + dots)
+function nameColor(nome) {
+  let h = 0;
+  for (let i = 0; i < nome.length; i++) h = (h * 31 + nome.charCodeAt(i)) & 0xffff;
+  return `hsl(${h % 360}, 65%, 48%)`;
+}
+function nameInitials(nome) {
+  const parts = nome.trim().split(/\s+/);
+  const a = parts[0]?.[0] || "";
+  const b = parts[1]?.[0] || "";
+  return (a + b).toUpperCase();
+}
+
 function buildWeeks(month) {
   const total = MONTHS.find(m=>m.id===month).days;
   const weeks = []; let week = Array(7).fill(null);
@@ -495,57 +508,102 @@ function Admin({ onBack }) {
             ))}
           </div>
 
-          <div style={{display:"flex",gap:12,padding:"8px 14px",flexWrap:"wrap"}}>
-            {[["#fee2e2","Scoperto"],["#fef9c3","1 bagnino"],["#dcfce7","≥2 bagnini"]].map(([c,l])=>(
-              <div key={l} style={{display:"flex",alignItems:"center",gap:5}}>
-                <div style={{width:10,height:10,background:c,borderRadius:2,border:"1px solid #ddd"}}/>
-                <span style={{color:"#aaa",fontSize:10}}>{l}</span>
-              </div>
-            ))}
-          </div>
-
-          <div style={{...S.cal,background:"transparent"}}>
-            <div style={{...S.calTitle}}>{m.name} 2026</div>
-            <div style={S.row}>
+          <div style={{padding:"10px 8px 24px",flex:1}}>
+            <div style={{...S.calTitle,padding:"6px 10px 10px"}}>{m.name} 2026</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7, minmax(0,1fr))",gap:6,padding:"0 6px"}}>
               {WEEK_LABELS.map((l,i)=>(
-                <div key={i} style={{...S.hdr,...(i>=5?S.hdrWE:{})}}>{l}</div>
+                <div key={i} style={{textAlign:"center",fontSize:10,fontWeight:800,color:i>=5?"#c79500":"#888",padding:"6px 0",letterSpacing:1}}>{l}</div>
               ))}
-            </div>
-            {weeks.map((wk,wi)=>(
-              <div key={wi} style={{display:"flex",gap:2,marginBottom:2}}>
-                {wk.map((day,ci)=>{
-                  if(!day) return <div key={ci} style={{flex:1}}/>;
-                  const {byShift,off,defs,dow} = dayInfo(day);
-                  const we = isWE(m.id,day);
-                  const {total} = dayInfo(day);
-                  const bg = total===0?"#fee2e2":total===1?"#fef9c3":"#dcfce7";
-                  return (
-                    <div key={ci} style={{flex:1,minWidth:0,background:bg,border:`1px solid ${we?"#f5e070":"#e8e8e2"}`,borderRadius:5,padding:"3px 2px"}}>
-                      <div style={{color:we?"#c79500":"#888",fontSize:9,fontWeight:800,textAlign:"center",marginBottom:2}}>{day}</div>
+              {weeks.flat().map((day,idx)=>{
+                if(!day) return <div key={`e${idx}`}/>;
+                const {byShift,off,defs,dow,total} = dayInfo(day);
+                const we = isWE(m.id,day);
+                const badge =
+                  total===0 ? {bg:"#fee2e2",fg:"#b91c1c",label:"Scoperto",border:"#fca5a5"} :
+                  total===1 ? {bg:"#fef9c3",fg:"#a16207",label:"1 bagnino",border:"#fde68a"} :
+                              {bg:"#dcfce7",fg:"#166534",label:`${total} bagnini`,border:"#86efac"};
+                return (
+                  <div key={day} style={{
+                    background:"#fff",
+                    borderRadius:12,
+                    border:`1px solid ${we?"#f5e070":"#e8e8e2"}`,
+                    boxShadow:"0 1px 4px #0000000d",
+                    padding:"10px 10px 8px",
+                    display:"flex",flexDirection:"column",gap:6,
+                    minHeight:120,minWidth:0,
+                  }}>
+                    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:6}}>
+                      <div style={{fontSize:22,fontWeight:800,lineHeight:1,color:we?"#c79500":"#1a1a1a"}}>{day}</div>
+                      <div style={{
+                        background:badge.bg,color:badge.fg,
+                        border:`1px solid ${badge.border}`,
+                        fontSize:9,fontWeight:800,padding:"3px 7px",borderRadius:20,
+                        whiteSpace:"nowrap",letterSpacing:0.3,
+                      }}>{badge.label}</div>
+                    </div>
+
+                    <div style={{display:"flex",flexDirection:"column",gap:4,marginTop:2}}>
                       {defs.map(s=>{
                         const ppl=byShift[s.id]||[];
                         if(!ppl.length) return null;
                         return (
-                          <div key={s.id} style={{marginBottom:2}}>
-                            <div style={{background:s.color,borderRadius:2,padding:"1px 2px",fontSize:7,fontWeight:800,color:s.text,textAlign:"center"}}>{shiftLabel(dow,s.id)}</div>
-                            {ppl.map(p=>(
-                              <div key={p} style={{background:"#00000010",borderRadius:2,padding:"0 2px",fontSize:7,color:"#555",textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>
-                                {p.split(" ")[0]}
-                              </div>
-                            ))}
+                          <div key={s.id} style={{display:"flex",flexDirection:"column",gap:2}}>
+                            <div style={{fontSize:9,fontWeight:800,color:s.color,letterSpacing:0.3}}>{shiftLabel(dow,s.id)}</div>
+                            {ppl.map(p=>{
+                              const c=nameColor(p);
+                              return (
+                                <div key={p} style={{display:"flex",alignItems:"center",gap:5,minWidth:0}}>
+                                  <div style={{width:6,height:6,borderRadius:"50%",background:c,flexShrink:0}}/>
+                                  <div style={{fontSize:11,fontWeight:700,color:"#1a1a1a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.split(" ")[0]}</div>
+                                </div>
+                              );
+                            })}
                           </div>
                         );
                       })}
-                      {off.length>0 && (
-                        <div style={{fontSize:6,color:"#e63946",textAlign:"center",marginTop:1}}>
-                          {off.map(p=>p.split(" ")[0]).join(",")}
-                        </div>
+                      {total===0 && (
+                        <div style={{fontSize:10,fontStyle:"italic",color:"#bbb"}}>nessuno</div>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-            ))}
+
+                    {off.length>0 && (
+                      <div style={{marginTop:"auto",paddingTop:6,borderTop:"1px dashed #eee"}}>
+                        <div style={{fontSize:8,fontWeight:700,color:"#bbb",letterSpacing:0.5,marginBottom:2}}>ASSENTI</div>
+                        <div style={{fontSize:10,color:"#999",lineHeight:1.4,overflow:"hidden",textOverflow:"ellipsis"}}>
+                          {off.map(p=>p.split(" ")[0]).join(", ")}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Staff legend */}
+            <div style={{marginTop:24,padding:"14px 14px 18px",background:"#fff",border:"1px solid #e8e8e2",borderRadius:12,boxShadow:"0 1px 4px #0000000a"}}>
+              <div style={{fontSize:10,fontWeight:800,color:"#888",letterSpacing:1.5,marginBottom:10}}>LEGENDA STAFF</div>
+              {data.length===0 ? (
+                <div style={{color:"#bbb",fontSize:12}}>Nessun bagnino registrato</div>
+              ) : (
+                <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+                  {data.map(r=>{
+                    const c = nameColor(r.nome);
+                    return (
+                      <div key={r.nome} style={{display:"flex",alignItems:"center",gap:8,background:"#f9f9f6",padding:"6px 10px 6px 6px",borderRadius:20,border:"1px solid #eee"}}>
+                        <div style={{
+                          width:26,height:26,borderRadius:"50%",
+                          background:c,color:"#fff",
+                          display:"flex",alignItems:"center",justifyContent:"center",
+                          fontSize:10,fontWeight:800,letterSpacing:0.5,
+                          boxShadow:"0 1px 3px #00000020",
+                        }}>{nameInitials(r.nome)}</div>
+                        <div style={{fontSize:12,fontWeight:700,color:"#1a1a1a"}}>{r.nome}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </>
       )}
