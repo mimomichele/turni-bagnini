@@ -109,10 +109,10 @@ const TABLE_CK_TASKS = "checklist_tasks";
 const TABLE_CK_COMP  = "checklist_completamenti";
 
 const CK_CATS = [
-  { id:"INGRESSO",   label:"Ingresso",       sublabel:"Turno mattina",       icon:"🌅", color:"#16a34a", daily:true  },
-  { id:"USCITA",     label:"Uscita",         sublabel:"Turno sera",          icon:"🌇", color:"#dc2626", daily:true  },
-  { id:"PERIODICHE", label:"Periodiche",     sublabel:"Reset manuale admin", icon:"🔁", color:"#2563eb", daily:false },
-  { id:"OCCORRENZA", label:"All'occorrenza", sublabel:"Su necessità",        icon:"⚡", color:"#f59e0b", daily:false },
+  { id:"INGRESSO",   label:"Ingresso",        sublabel:"Turno mattina",       icon:"🌅", color:"#2563eb", daily:true  },
+  { id:"USCITA",     label:"Uscita",          sublabel:"Turno sera",          icon:"🌇", color:"#f59e0b", daily:true  },
+  { id:"PERIODICHE", label:"Periodiche",      sublabel:"Reset manuale admin", icon:"🔁", color:"#9333ea", daily:false },
+  { id:"OCCORRENZA", label:"All'occorrenza",  sublabel:"Su necessità",        icon:"⚡", color:"#16a34a", daily:false },
 ];
 
 function todayISO() {
@@ -130,7 +130,7 @@ function dateLabel(iso) {
 
 async function ckTasks() {
   try {
-    const r = await fetch(`${SB_URL}/rest/v1/${TABLE_CK_TASKS}?select=*&order=categoria.asc,ordine.asc`, { headers: H });
+    const r = await fetch(`${SB_URL}/rest/v1/${TABLE_CK_TASKS}?select=*&attivo=eq.true&order=categoria.asc,ordine.asc`, { headers: H });
     if(!r.ok) throw new Error(`HTTP ${r.status}`);
     return await r.json();
   } catch(e) { console.error("ckTasks",e); return []; }
@@ -167,23 +167,32 @@ async function ckDeleteCompletionsTodayForTask(task_id) {
 }
 // Admin ops (use service key)
 async function ckAddTask({ categoria, titolo, ordine }) {
-  const body = JSON.stringify({ categoria, titolo, ordine: ordine||0 });
+  const body = JSON.stringify({ categoria, titolo, ordine: ordine||0, attivo: true });
   try {
     const r = await fetch(`${SB_URL}/rest/v1/${TABLE_CK_TASKS}`, { method:"POST", headers: H_ADMIN, body });
     return (await r.json())?.[0];
   } catch(e) { console.error("ckAddTask",e); return null; }
 }
+// Soft delete: attivo=false (preserves history of completamenti)
 async function ckDeleteTask(id) {
-  try { await fetch(`${SB_URL}/rest/v1/${TABLE_CK_TASKS}?id=eq.${id}`, { method:"DELETE", headers: H_ADMIN }); }
+  const body = JSON.stringify({ attivo: false });
+  try { await fetch(`${SB_URL}/rest/v1/${TABLE_CK_TASKS}?id=eq.${id}`, { method:"PATCH", headers: H_ADMIN, body }); }
   catch(e) { console.error("ckDeleteTask",e); }
 }
+// Reset: delete ALL completamenti for every task in the category (no date filter)
 async function ckResetCategory(categoria) {
-  const body = JSON.stringify({ reset_il: new Date().toISOString() });
-  try { await fetch(`${SB_URL}/rest/v1/${TABLE_CK_TASKS}?categoria=eq.${categoria}`, { method:"PATCH", headers: H_ADMIN, body }); }
-  catch(e) { console.error("ckResetCategory",e); }
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${TABLE_CK_TASKS}?select=id&attivo=eq.true&categoria=eq.${categoria}`, { headers: H });
+    const tasks = await r.json();
+    const ids = (tasks||[]).map(t => t.id);
+    if(!ids.length) return;
+    await fetch(`${SB_URL}/rest/v1/${TABLE_CK_COMP}?task_id=in.(${ids.join(",")})`, { method:"DELETE", headers: H_ADMIN });
+  } catch(e) { console.error("ckResetCategory",e); }
 }
 
-// Returns the completion that counts as "done" for a task, or null
+// Returns the completion that counts as "done" for a task, or null.
+// Daily categories (INGRESSO/USCITA) → must match the given date (or today).
+// Periodic categories → any completion makes the task done; reset clears all rows.
 function taskStatus(task, completions, date) {
   const d = date || todayISO();
   if (task.categoria === "INGRESSO" || task.categoria === "USCITA") {
@@ -191,10 +200,8 @@ function taskStatus(task, completions, date) {
     return c || null;
   }
   const cs = completions.filter(x => x.task_id === task.id);
-  const resetAt = task.reset_il ? new Date(task.reset_il) : null;
-  const valid = cs.filter(c => !resetAt || new Date(c.completato_alle) > resetAt);
-  if(!valid.length) return null;
-  return valid.sort((a,b)=>new Date(b.completato_alle)-new Date(a.completato_alle))[0];
+  if(!cs.length) return null;
+  return cs.slice().sort((a,b)=>new Date(b.completato_alle)-new Date(a.completato_alle))[0];
 }
 
 // ─── CALENDAR CONFIG ───────────────────────────────────────────────────────
@@ -511,14 +518,13 @@ function Checklist({ name, onBack }) {
 
   async function toggle(task) {
     if(busyId) return;
-    setBusyId(task.id);
     const s = taskStatus(task, completions);
+    // If completed by someone else → no-op (locked)
+    if (s && s.bagnino !== name) return;
+    setBusyId(task.id);
     if (s) {
-      if (task.categoria === "INGRESSO" || task.categoria === "USCITA") {
-        await ckDeleteCompletionsTodayForTask(task.id);
-      } else {
-        await ckDeleteCompletion(s.id);
-      }
+      // Uncheck — delete only the completion of the current user
+      await ckDeleteCompletion(s.id);
     } else {
       await ckComplete(task.id, name);
     }
@@ -564,8 +570,10 @@ function Checklist({ name, onBack }) {
                   <div style={{padding:"18px",color:"#bbb",fontSize:12,textAlign:"center"}}>Nessun task in questa categoria</div>
                 )}
                 {catTasks.map(t => {
-                  const s = taskStatus(t, completions);
-                  const done = !!s;
+                  const s        = taskStatus(t, completions);
+                  const done     = !!s;
+                  const mine     = done && s.bagnino === name;
+                  const lockedBy = done && !mine ? s.bagnino : null;
                   return (
                     <button key={t.id} onClick={()=>toggle(t)} disabled={busyId===t.id} style={{
                       display:"flex",alignItems:"center",gap:12,
@@ -573,7 +581,7 @@ function Checklist({ name, onBack }) {
                       background: done ? "#f0fdf4" : "#fff",
                       border:"none",
                       borderTop:"1px solid #f0f0ea",
-                      cursor: busyId===t.id ? "wait" : "pointer",
+                      cursor: busyId===t.id ? "wait" : (done && !mine ? "default" : "pointer"),
                       textAlign:"left",fontFamily:"'Josefin Sans',sans-serif",
                       opacity: busyId===t.id ? 0.6 : 1,
                     }}>
@@ -589,8 +597,9 @@ function Checklist({ name, onBack }) {
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{color:"#1a1a1a",fontSize:13,fontWeight:700,textDecoration:done?"line-through":"none",opacity:done?0.65:1,lineHeight:1.3}}>{t.titolo}</div>
                         {done && (
-                          <div style={{color:"#16a34a",fontSize:10,fontWeight:700,marginTop:3,letterSpacing:0.2}}>
-                            ✓ {s.bagnino} · {hhmm(s.completato_alle)}
+                          <div style={{color:"#4ade80",fontSize:10,fontWeight:700,marginTop:3,letterSpacing:0.2,display:"flex",alignItems:"center",gap:4}}>
+                            <span>✓ {s.bagnino} · {hhmm(s.completato_alle)}</span>
+                            {lockedBy && <span style={{fontSize:9,color:"#aaa"}} title={`Solo ${lockedBy} può deselezionare`}>🔒</span>}
                           </div>
                         )}
                       </div>
@@ -608,6 +617,7 @@ function Checklist({ name, onBack }) {
 
 // ─── ADMIN CHECKLIST ──────────────────────────────────────────────────────
 function AdminChecklist() {
+  const [subTab, setSubTab]           = useState("storico");
   const [tasks, setTasks]             = useState([]);
   const [completions, setCompletions] = useState([]);
   const [date, setDate]               = useState(todayISO());
@@ -639,86 +649,141 @@ function AdminChecklist() {
     await load();
   }
   async function delTask(id, titolo) {
-    if(!window.confirm(`Eliminare il task "${titolo}"?\n(verranno rimossi anche tutti i completamenti collegati)`)) return;
+    if(!window.confirm(`Rimuovere il task "${titolo}"?\nVerrà nascosto dalla checklist; lo storico dei completamenti resta in archivio.`)) return;
     await ckDeleteTask(id);
     await load();
   }
   async function resetCat(cat) {
-    if(!window.confirm(`Resettare tutti i task della categoria ${cat}?\nVerranno marcati come "da fare".`)) return;
+    if(!window.confirm(`Resettare la categoria ${cat}?\nVerranno CANCELLATI tutti i completamenti registrati per i task di questa categoria.`)) return;
     await ckResetCategory(cat);
     await load();
   }
+
+  const subTabBtn = (id, label) => (
+    <button onClick={()=>setSubTab(id)} style={{
+      flex:1,padding:"10px 8px",
+      background: subTab===id ? "#1a1a1a":"#fff",
+      color:      subTab===id ? "#F5C200":"#888",
+      border:`2px solid ${subTab===id?"#1a1a1a":"#e0e0d8"}`,
+      borderRadius:10,fontSize:12,fontWeight:800,cursor:"pointer",
+      fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.5,
+    }}>{label}</button>
+  );
 
   if(loading) return (
     <div style={{padding:"24px",color:"#888",fontFamily:"'Josefin Sans',sans-serif",textAlign:"center"}}>Caricamento checklist…</div>
   );
 
   return (
-    <div style={{padding:"12px 14px 32px",flex:1,display:"flex",flexDirection:"column",gap:14}}>
-      <div style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid #e8e8e2",display:"flex",alignItems:"center",gap:10,boxShadow:"0 1px 4px #0000000a",flexWrap:"wrap"}}>
-        <div style={{color:"#888",fontSize:10,fontWeight:800,letterSpacing:1.2,flex:1,minWidth:"100%",marginBottom:2}}>STORICO PER DATA (giornaliere)</div>
-        <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{padding:"7px 10px",border:"2px solid #e0e0d8",borderRadius:8,fontFamily:"'Josefin Sans',sans-serif",fontSize:12,color:"#1a1a1a",outline:"none"}}/>
-        <button onClick={()=>setDate(todayISO())} style={{padding:"7px 12px",background:"#f0f0ea",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",color:"#888"}}>Oggi</button>
-        <div style={{color:"#bbb",fontSize:10,marginLeft:"auto"}}>Le periodiche/occorrenza non dipendono dalla data</div>
+    <div style={{padding:"8px 14px 32px",flex:1,display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",gap:6}}>
+        {subTabBtn("storico", "📋 Storico")}
+        {subTabBtn("gestione","⚙️ Gestione Task")}
       </div>
 
-      {CK_CATS.map(cat => {
-        const catTasks = tasks.filter(t => t.categoria === cat.id);
-        return (
-          <div key={cat.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e8e8e2",overflow:"hidden",boxShadow:"0 1px 4px #0000000a"}}>
-            <div style={{padding:"12px 14px",background:`${cat.color}15`,borderBottom:`2px solid ${cat.color}`,display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:20}}>{cat.icon}</span>
-              <div style={{flex:1}}>
-                <div style={{color:cat.color,fontSize:12,fontWeight:800,letterSpacing:1.2}}>{cat.label.toUpperCase()}</div>
-                <div style={{color:"#888",fontSize:10}}>{cat.sublabel}</div>
-              </div>
-              {!cat.daily && (
-                <button onClick={()=>resetCat(cat.id)} style={{padding:"6px 12px",background:cat.color,color:"#fff",border:"none",borderRadius:6,fontSize:10,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.5}}>
-                  ⟳ Reset
-                </button>
-              )}
-            </div>
-
-            <div>
-              {catTasks.length===0 && (
-                <div style={{padding:"14px",color:"#bbb",fontSize:11,textAlign:"center"}}>Nessun task</div>
-              )}
-              {catTasks.map(t => {
-                const s = taskStatus(t, completions, date);
-                const done = !!s;
-                return (
-                  <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderTop:"1px solid #f0f0ea",background:done?"#f0fdf4":"#fff"}}>
-                    <div style={{width:18,height:18,borderRadius:5,border:`2px solid ${done?"#16a34a":"#d0d0c8"}`,background:done?"#16a34a":"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                      {done && <span style={{color:"#fff",fontSize:11,fontWeight:800,lineHeight:1}}>✓</span>}
-                    </div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{color:"#1a1a1a",fontSize:12,fontWeight:700,lineHeight:1.3}}>{t.titolo}</div>
-                      {done ? (
-                        <div style={{color:"#16a34a",fontSize:10,fontWeight:700,marginTop:2}}>
-                          {s.bagnino} · {dateLabel(s.completato_alle)}
-                        </div>
-                      ) : (
-                        <div style={{color:"#bbb",fontSize:10,marginTop:2}}>— non completato</div>
-                      )}
-                    </div>
-                    <button onClick={()=>delTask(t.id,t.titolo)} style={{background:"none",border:"none",color:"#e63946",fontSize:15,cursor:"pointer",padding:"2px 6px",lineHeight:1}} title="Elimina task">✕</button>
-                  </div>
-                );
-              })}
-              <div style={{display:"flex",gap:6,padding:"10px 14px",borderTop:"1px solid #f0f0ea",background:"#fafaf8"}}>
-                <input
-                  value={newTitle[cat.id]}
-                  onChange={e=>setNewTitle({...newTitle,[cat.id]:e.target.value})}
-                  onKeyDown={e=>e.key==="Enter"&&addTask(cat.id)}
-                  placeholder="Nuovo task…"
-                  style={{flex:1,padding:"8px 10px",border:"2px solid #e0e0d8",borderRadius:6,fontSize:12,fontFamily:"'Josefin Sans',sans-serif",outline:"none",minWidth:0}}
-                />
-                <button onClick={()=>addTask(cat.id)} style={{padding:"8px 14px",background:cat.color,color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",whiteSpace:"nowrap"}}>+ Aggiungi</button>
-              </div>
-            </div>
+      {/* ============ STORICO ============ */}
+      {subTab === "storico" && (
+        <>
+          <div style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid #e8e8e2",display:"flex",alignItems:"center",gap:10,boxShadow:"0 1px 4px #0000000a",flexWrap:"wrap"}}>
+            <div style={{color:"#888",fontSize:10,fontWeight:800,letterSpacing:1.2,flex:1,minWidth:"100%",marginBottom:2}}>STORICO PER DATA (giornaliere)</div>
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{padding:"7px 10px",border:"2px solid #e0e0d8",borderRadius:8,fontFamily:"'Josefin Sans',sans-serif",fontSize:12,color:"#1a1a1a",outline:"none"}}/>
+            <button onClick={()=>setDate(todayISO())} style={{padding:"7px 12px",background:"#f0f0ea",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",color:"#888"}}>Oggi</button>
+            <div style={{color:"#bbb",fontSize:10,marginLeft:"auto"}}>Le periodiche/occorrenza non dipendono dalla data</div>
           </div>
-        );
-      })}
+
+          {CK_CATS.map(cat => {
+            const catTasks = tasks.filter(t => t.categoria === cat.id);
+            return (
+              <div key={cat.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e8e8e2",overflow:"hidden",boxShadow:"0 1px 4px #0000000a"}}>
+                <div style={{padding:"12px 14px",background:`${cat.color}15`,borderBottom:`2px solid ${cat.color}`,display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:20}}>{cat.icon}</span>
+                  <div style={{flex:1}}>
+                    <div style={{color:cat.color,fontSize:12,fontWeight:800,letterSpacing:1.2}}>{cat.label.toUpperCase()}</div>
+                    <div style={{color:"#888",fontSize:10}}>{cat.sublabel}</div>
+                  </div>
+                  <div style={{color:cat.color,fontSize:11,fontWeight:800,background:"#fff",padding:"3px 10px",borderRadius:20,border:`1px solid ${cat.color}40`}}>
+                    {catTasks.filter(t=>taskStatus(t,completions,date)).length}/{catTasks.length}
+                  </div>
+                </div>
+                <div>
+                  {catTasks.length===0 && (
+                    <div style={{padding:"14px",color:"#bbb",fontSize:11,textAlign:"center"}}>Nessun task</div>
+                  )}
+                  {catTasks.map(t => {
+                    const s = taskStatus(t, completions, date);
+                    const done = !!s;
+                    return (
+                      <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderTop:"1px solid #f0f0ea",background:done?"#f0fdf4":"#fff"}}>
+                        <div style={{width:18,height:18,borderRadius:5,border:`2px solid ${done?"#16a34a":"#d0d0c8"}`,background:done?"#16a34a":"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                          {done && <span style={{color:"#fff",fontSize:11,fontWeight:800,lineHeight:1}}>✓</span>}
+                        </div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{color:"#1a1a1a",fontSize:12,fontWeight:700,lineHeight:1.3}}>{t.titolo}</div>
+                          {done ? (
+                            <div style={{color:"#16a34a",fontSize:10,fontWeight:700,marginTop:2}}>
+                              {s.bagnino} · {dateLabel(s.completato_alle)}
+                            </div>
+                          ) : (
+                            <div style={{color:"#bbb",fontSize:10,marginTop:2}}>— non completato</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
+
+      {/* ============ GESTIONE TASK ============ */}
+      {subTab === "gestione" && (
+        <>
+          {CK_CATS.map(cat => {
+            const catTasks = tasks.filter(t => t.categoria === cat.id);
+            return (
+              <div key={cat.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e8e8e2",overflow:"hidden",boxShadow:"0 1px 4px #0000000a"}}>
+                <div style={{padding:"12px 14px",background:`${cat.color}15`,borderBottom:`2px solid ${cat.color}`,display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:20}}>{cat.icon}</span>
+                  <div style={{flex:1}}>
+                    <div style={{color:cat.color,fontSize:12,fontWeight:800,letterSpacing:1.2}}>{cat.label.toUpperCase()}</div>
+                    <div style={{color:"#888",fontSize:10}}>{cat.sublabel}</div>
+                  </div>
+                  {!cat.daily && (
+                    <button onClick={()=>resetCat(cat.id)} title="Cancella tutti i completamenti di questa categoria" style={{padding:"6px 12px",background:cat.color,color:"#fff",border:"none",borderRadius:6,fontSize:10,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.5}}>
+                      🔄 Reset
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  {catTasks.length===0 && (
+                    <div style={{padding:"14px",color:"#bbb",fontSize:11,textAlign:"center"}}>Nessun task</div>
+                  )}
+                  {catTasks.map(t => (
+                    <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderTop:"1px solid #f0f0ea"}}>
+                      <div style={{width:6,height:6,borderRadius:"50%",background:cat.color,flexShrink:0}}/>
+                      <div style={{flex:1,minWidth:0,color:"#1a1a1a",fontSize:12,fontWeight:700,lineHeight:1.3}}>{t.titolo}</div>
+                      <button onClick={()=>delTask(t.id,t.titolo)} style={{background:"none",border:"none",color:"#e63946",fontSize:15,cursor:"pointer",padding:"2px 6px",lineHeight:1}} title="Rimuovi task">✕</button>
+                    </div>
+                  ))}
+                  <div style={{display:"flex",gap:6,padding:"10px 14px",borderTop:"1px solid #f0f0ea",background:"#fafaf8"}}>
+                    <input
+                      value={newTitle[cat.id]}
+                      onChange={e=>setNewTitle({...newTitle,[cat.id]:e.target.value})}
+                      onKeyDown={e=>e.key==="Enter"&&addTask(cat.id)}
+                      placeholder="Nuovo task…"
+                      style={{flex:1,padding:"8px 10px",border:"2px solid #e0e0d8",borderRadius:6,fontSize:12,fontFamily:"'Josefin Sans',sans-serif",outline:"none",minWidth:0}}
+                    />
+                    <button onClick={()=>addTask(cat.id)} style={{padding:"8px 14px",background:cat.color,color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",whiteSpace:"nowrap"}}>+ Aggiungi</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
     </div>
   );
 }
