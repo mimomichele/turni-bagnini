@@ -57,6 +57,53 @@ async function sbAll() {
   }
 }
 
+// ─── TURNI CONFERMATI API ─────────────────────────────────────────────────
+const TABLE_TC = "turni_confermati";
+
+// Hours per shift type derived from getShifts() definitions
+function shiftHours(dow, sid) {
+  if (dow === 4) return 6;                          // Giovedì 12-18
+  if (dow === 6 || dow === 0) return sid === "C" ? 11 : 5.5; // Sab/Dom A=9-14:30, B=14:30-20, C=9-20
+  return 7;                                          // Lun/Mar/Mer/Ven 12-19
+}
+
+function pad2(n){ return String(n).padStart(2,"0"); }
+function dateStrOf(monthId, day) { return `${YEAR}-${pad2(monthId)}-${pad2(day)}`; }
+
+async function tcAll() {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${TABLE_TC}?select=*&order=data.asc`, { headers: H });
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch(e) { console.error("tcAll",e); return []; }
+}
+
+// Atomic replace: delete all rows for date, then insert the new ones
+async function tcReplaceForDay(date, assignments) {
+  try {
+    await fetch(`${SB_URL}/rest/v1/${TABLE_TC}?data=eq.${date}`, { method:"DELETE", headers: H_ADMIN });
+    if(!assignments.length) return [];
+    const body = JSON.stringify(assignments.map(a => ({
+      data: date,
+      bagnino: a.bagnino,
+      turno: a.turno,
+      ore: a.ore,
+      aggiornato_il: new Date().toISOString(),
+    })));
+    const r = await fetch(`${SB_URL}/rest/v1/${TABLE_TC}`, { method:"POST", headers: H_ADMIN, body });
+    return await r.json();
+  } catch(e) { console.error("tcReplaceForDay",e); return []; }
+}
+
+async function tcBulkInsert(rows) {
+  if(!rows.length) return [];
+  try {
+    const body = JSON.stringify(rows.map(r => ({...r, aggiornato_il: new Date().toISOString()})));
+    const r = await fetch(`${SB_URL}/rest/v1/${TABLE_TC}`, { method:"POST", headers: H_ADMIN, body });
+    return await r.json();
+  } catch(e) { console.error("tcBulkInsert",e); return []; }
+}
+
 // ─── CHECKLIST API ─────────────────────────────────────────────────────────
 const TABLE_CK_TASKS = "checklist_tasks";
 const TABLE_CK_COMP  = "checklist_completamenti";
@@ -676,6 +723,326 @@ function AdminChecklist() {
   );
 }
 
+// ─── ORE DI LAVORO ────────────────────────────────────────────────────────
+function HoursCalendar({ data, confirmed, reload }) {
+  const [mi, setMi]                 = useState(0);
+  const [editDay, setEditDay]       = useState(null); // {monthId, day, dow, defs}
+  const [editAssign, setEditAssign] = useState([]);   // [{bagnino,turno,ore}]
+  const [saving, setSaving]         = useState(false);
+
+  const m = MONTHS[mi];
+  const weeks = buildWeeks(m.id);
+  const allNames = data.map(r => r.nome);
+
+  function dayConfirmed(monthId, day) {
+    return confirmed.filter(r => r.data === dateStrOf(monthId, day));
+  }
+  function dayPrefs(monthId, day) {
+    const res = [];
+    data.forEach(r => {
+      if((r.absent?.[monthId]||[]).includes(day)) return;
+      (r.shifts?.[monthId]?.[day]||[]).forEach(sid => res.push({ bagnino: r.nome, turno: sid }));
+    });
+    return res;
+  }
+
+  function openEdit(day) {
+    const monthId = m.id;
+    const dow = getDow(monthId, day);
+    const defs = getShifts(dow);
+    const existing = dayConfirmed(monthId, day);
+    if (existing.length) {
+      setEditAssign(existing.map(r => ({ bagnino: r.bagnino, turno: r.turno, ore: Number(r.ore) })));
+    } else {
+      const prefs = dayPrefs(monthId, day);
+      setEditAssign(prefs.map(p => ({ bagnino: p.bagnino, turno: p.turno, ore: shiftHours(dow, p.turno) })));
+    }
+    setEditDay({ monthId, day, dow, defs });
+  }
+  async function saveEdit() {
+    if(!editDay) return;
+    const clean = editAssign.filter(a => a.bagnino && a.bagnino.trim());
+    setSaving(true);
+    await tcReplaceForDay(dateStrOf(editDay.monthId, editDay.day), clean);
+    await reload();
+    setSaving(false);
+    setEditDay(null);
+  }
+  async function clearDay() {
+    if(!editDay) return;
+    if(!window.confirm("Cancellare tutte le conferme di questo giorno?")) return;
+    setSaving(true);
+    await tcReplaceForDay(dateStrOf(editDay.monthId, editDay.day), []);
+    await reload();
+    setSaving(false);
+    setEditDay(null);
+  }
+  async function confirmMonthFromPrefs() {
+    if(!window.confirm(`Confermare l'intero mese di ${m.name} dalle preferenze?\nVerranno create le conferme solo per i giorni NON ancora confermati.`)) return;
+    const rows = [];
+    for(let day=1; day<=m.days; day++){
+      if(dayConfirmed(m.id, day).length) continue;
+      const dow = getDow(m.id, day);
+      dayPrefs(m.id, day).forEach(p => rows.push({
+        data: dateStrOf(m.id, day),
+        bagnino: p.bagnino,
+        turno: p.turno,
+        ore: shiftHours(dow, p.turno),
+      }));
+    }
+    if(!rows.length) { window.alert("Nessun giorno da confermare"); return; }
+    await tcBulkInsert(rows);
+    await reload();
+  }
+
+  function addAssign(turno) {
+    const dow = editDay.dow;
+    setEditAssign([...editAssign, { bagnino:"", turno, ore: shiftHours(dow, turno) }]);
+  }
+  function updateAssign(idx, patch) {
+    setEditAssign(editAssign.map((a,i) => i===idx ? {...a,...patch} : a));
+  }
+  function removeAssign(idx) {
+    setEditAssign(editAssign.filter((_,i)=>i!==idx));
+  }
+
+  const dowNames = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"];
+
+  return (
+    <>
+      <div style={{...S.tabs,marginTop:4}}>
+        {MONTHS.map((mo,i)=>(
+          <button key={mo.id} onClick={()=>setMi(i)} style={{...S.tab,...(i===mi?S.tabOn:{})}}>{mo.short}</button>
+        ))}
+      </div>
+
+      <div style={{display:"flex",gap:8,alignItems:"center",padding:"8px 14px",flexWrap:"wrap"}}>
+        <div style={{display:"flex",alignItems:"center",gap:5}}>
+          <div style={{width:10,height:10,background:"#dcfce7",borderRadius:2,border:"1px solid #86efac"}}/>
+          <span style={{color:"#888",fontSize:10}}>Confermato</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:5}}>
+          <div style={{width:10,height:10,background:"#fef9c3",borderRadius:2,border:"1px solid #fde68a"}}/>
+          <span style={{color:"#888",fontSize:10}}>Da preferenze</span>
+        </div>
+        <button onClick={confirmMonthFromPrefs} style={{marginLeft:"auto",padding:"6px 10px",background:"#16a34a",color:"#fff",border:"none",borderRadius:6,fontSize:10,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.3}}>
+          ✓ Conferma mese da preferenze
+        </button>
+      </div>
+
+      <div style={{padding:"6px 8px 24px"}}>
+        <div style={{...S.calTitle,padding:"4px 10px 8px"}}>{m.name} 2026</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7, minmax(0,1fr))",gap:4,padding:"0 4px"}}>
+          {WEEK_LABELS.map((l,i)=>(
+            <div key={i} style={{textAlign:"center",fontSize:9,fontWeight:800,color:i>=5?"#c79500":"#888",padding:"4px 0",letterSpacing:1}}>{l}</div>
+          ))}
+          {weeks.flat().map((day,idx)=>{
+            if(!day) return <div key={`e${idx}`}/>;
+            const conf = dayConfirmed(m.id, day);
+            const isConf = conf.length > 0;
+            const display = isConf ? conf.map(c=>({bagnino:c.bagnino,turno:c.turno,ore:Number(c.ore)}))
+                                   : dayPrefs(m.id, day).map(p=>({bagnino:p.bagnino,turno:p.turno,ore:shiftHours(getDow(m.id,day),p.turno)}));
+            const we = isWE(m.id, day);
+            return (
+              <button key={day} onClick={()=>openEdit(day)} style={{
+                background: isConf ? "#dcfce7" : (display.length ? "#fef9c3" : "#fff"),
+                border:`1px solid ${isConf?"#86efac":(display.length?"#fde68a":(we?"#f5e070":"#e8e8e2"))}`,
+                borderRadius:8,
+                padding:"6px 4px",
+                display:"flex",flexDirection:"column",gap:3,
+                minHeight:88,minWidth:0,
+                cursor:"pointer",
+                fontFamily:"'Josefin Sans',sans-serif",
+                textAlign:"left",
+                boxShadow:"0 1px 3px #0000000a",
+              }}>
+                <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:3}}>
+                  <div style={{fontSize:15,fontWeight:800,lineHeight:1,color:we?"#c79500":"#1a1a1a"}}>{day}</div>
+                  <div style={{fontSize:7,fontWeight:800,letterSpacing:0.3,color:isConf?"#166534":"#a16207",lineHeight:1}}>
+                    {isConf ? `✓ ${display.length}` : (display.length ? `~ ${display.length}` : "—")}
+                  </div>
+                </div>
+                <div style={{flex:1,display:"flex",flexDirection:"column",gap:1,minWidth:0}}>
+                  {display.slice(0,4).map((a,i)=>(
+                    <div key={i} style={{fontSize:8,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>
+                      <span style={{fontWeight:800,color:isConf?"#166534":"#666"}}>{a.bagnino.split(" ")[0]}</span>
+                      <span style={{color:"#999",marginLeft:2}}>·{a.ore}h</span>
+                    </div>
+                  ))}
+                  {display.length>4 && <div style={{fontSize:7,color:"#aaa"}}>+{display.length-4}…</div>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* EDIT MODAL */}
+      {editDay && (
+        <div style={{position:"fixed",inset:0,background:"#00000070",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:14}}>
+          <div style={{background:"#fff",borderRadius:14,maxWidth:420,width:"100%",maxHeight:"92vh",overflowY:"auto",boxShadow:"0 8px 32px #00000035",padding:"18px",fontFamily:"'Josefin Sans',sans-serif"}}>
+            <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:16}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:9,color:"#c79500",fontWeight:800,letterSpacing:1.5}}>{MONTHS.find(x=>x.id===editDay.monthId).name.toUpperCase()} {YEAR}</div>
+                <div style={{fontSize:22,fontWeight:800,color:"#1a1a1a",lineHeight:1.1,marginTop:2}}>Giorno {editDay.day}</div>
+                <div style={{fontSize:11,color:"#888",marginTop:2}}>{dowNames[editDay.dow]} · turni: {editDay.defs.map(d=>shiftLabel(editDay.dow,d.id)).join(" / ")}</div>
+              </div>
+              <button onClick={()=>setEditDay(null)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888",padding:"0 4px",lineHeight:1}}>✕</button>
+            </div>
+
+            {editDay.defs.map(s => (
+              <div key={s.id} style={{marginBottom:12,padding:"10px 12px",border:"1px solid #e8e8e2",borderRadius:10,background:"#fafaf8"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                  <div style={{background:s.color,color:s.text,padding:"3px 10px",borderRadius:14,fontSize:11,fontWeight:800,letterSpacing:0.3}}>{s.label}</div>
+                  <div style={{color:"#888",fontSize:11,fontWeight:700}}>{shiftHours(editDay.dow,s.id)}h std</div>
+                </div>
+                {editAssign.map((a,i)=>{
+                  if (a.turno !== s.id) return null;
+                  return (
+                    <div key={i} style={{display:"flex",gap:5,alignItems:"center",marginBottom:6}}>
+                      <select value={a.bagnino} onChange={e=>updateAssign(i,{bagnino:e.target.value})} style={{flex:1,padding:"7px 8px",border:"2px solid #e0e0d8",borderRadius:6,fontSize:12,fontFamily:"'Josefin Sans',sans-serif",outline:"none",background:"#fff",color:"#1a1a1a",minWidth:0}}>
+                        <option value="">— Seleziona —</option>
+                        {allNames.map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                      <input type="number" step="0.5" min="0" value={a.ore} onChange={e=>updateAssign(i,{ore:Number(e.target.value)})} style={{width:54,padding:"7px 6px",border:"2px solid #e0e0d8",borderRadius:6,fontSize:12,fontFamily:"'Josefin Sans',sans-serif",outline:"none",textAlign:"center",color:"#1a1a1a"}}/>
+                      <span style={{fontSize:11,color:"#888",fontWeight:700}}>h</span>
+                      <button onClick={()=>removeAssign(i)} style={{background:"none",border:"none",color:"#e63946",cursor:"pointer",fontSize:14,padding:"4px 6px",lineHeight:1}}>✕</button>
+                    </div>
+                  );
+                })}
+                <button onClick={()=>addAssign(s.id)} style={{background:"#fff",border:"1.5px dashed #ccc",borderRadius:6,padding:"6px 10px",fontSize:10,cursor:"pointer",color:"#888",fontFamily:"'Josefin Sans',sans-serif",fontWeight:700,width:"100%",marginTop:4,letterSpacing:0.3}}>
+                  + Aggiungi bagnino a questo turno
+                </button>
+              </div>
+            ))}
+
+            <div style={{display:"flex",gap:6,marginTop:14}}>
+              <button onClick={clearDay} disabled={saving} style={{flex:1,padding:"10px 6px",background:"#fff",border:"2px solid #fca5a5",borderRadius:8,fontSize:10,fontWeight:800,color:"#e63946",cursor:saving?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.3}}>🗑️ Reset</button>
+              <button onClick={()=>setEditDay(null)} disabled={saving} style={{flex:1,padding:"10px 6px",background:"#f0f0ea",border:"none",borderRadius:8,fontSize:11,fontWeight:700,color:"#888",cursor:saving?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>Annulla</button>
+              <button onClick={saveEdit} disabled={saving} style={{flex:1.6,padding:"10px 6px",background:saving?"#444":"#16a34a",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:800,cursor:saving?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>{saving?"…":"✓ Salva"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function HoursSummary({ data, confirmed }) {
+  // For each bagnino × month: { conf, est }
+  const rows = data.map(r => {
+    const cells = MONTHS.map(mo => {
+      const monthPrefix = `${YEAR}-${pad2(mo.id)}-`;
+      const conf = confirmed
+        .filter(c => c.bagnino === r.nome && c.data.startsWith(monthPrefix))
+        .reduce((s,x) => s + Number(x.ore||0), 0);
+      const confDates = new Set(
+        confirmed.filter(c => c.data.startsWith(monthPrefix)).map(c => c.data)
+      );
+      let est = 0;
+      for (let day = 1; day <= mo.days; day++) {
+        if (confDates.has(dateStrOf(mo.id, day))) continue; // skip days already confirmed
+        if ((r.absent?.[mo.id]||[]).includes(day)) continue;
+        const sids = r.shifts?.[mo.id]?.[day] || [];
+        const dow = getDow(mo.id, day);
+        sids.forEach(sid => { est += shiftHours(dow, sid); });
+      }
+      return { conf, est };
+    });
+    const totConf = cells.reduce((s,c)=>s+c.conf,0);
+    const totEst  = cells.reduce((s,c)=>s+c.est,0);
+    return { nome: r.nome, cells, totConf, totEst };
+  }).sort((a,b) => (b.totConf+b.totEst)-(a.totConf+a.totEst));
+
+  const fmt = h => Number.isInteger(h) ? `${h}` : h.toFixed(1).replace(/\.0$/,"");
+
+  return (
+    <div style={{padding:"4px 10px 24px"}}>
+      <div style={{background:"#fff",border:"1px solid #e8e8e2",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 4px #0000000a"}}>
+        <div style={{padding:"12px 14px",borderBottom:"2px solid #16a34a",background:"#f0fdf4",display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:20}}>📊</span>
+          <div style={{flex:1}}>
+            <div style={{color:"#166534",fontSize:12,fontWeight:800,letterSpacing:1.2}}>RIEPILOGO ORE</div>
+            <div style={{color:"#888",fontSize:10}}>Estate 2026</div>
+          </div>
+        </div>
+
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontFamily:"'Josefin Sans',sans-serif",minWidth:480}}>
+            <thead>
+              <tr style={{background:"#fafaf8"}}>
+                <th style={{textAlign:"left",padding:"10px 12px",fontSize:10,fontWeight:800,color:"#888",letterSpacing:1,borderBottom:"1px solid #e8e8e2"}}>BAGNINO</th>
+                {MONTHS.map(mo => (
+                  <th key={mo.id} style={{textAlign:"center",padding:"10px 6px",fontSize:10,fontWeight:800,color:"#888",letterSpacing:1,borderBottom:"1px solid #e8e8e2"}}>{mo.short}</th>
+                ))}
+                <th style={{textAlign:"center",padding:"10px 10px",fontSize:10,fontWeight:800,color:"#1a1a1a",letterSpacing:1,borderBottom:"1px solid #e8e8e2",background:"#fffbea"}}>TOT</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length===0 && (
+                <tr><td colSpan={MONTHS.length+2} style={{padding:24,textAlign:"center",color:"#bbb",fontSize:12}}>Nessun bagnino registrato</td></tr>
+              )}
+              {rows.map(row => (
+                <tr key={row.nome} style={{borderBottom:"1px solid #f0f0ea"}}>
+                  <td style={{padding:"10px 12px",fontSize:12,fontWeight:700,color:"#1a1a1a",whiteSpace:"nowrap"}}>{row.nome}</td>
+                  {row.cells.map((c,i)=>(
+                    <td key={i} style={{padding:"8px 4px",textAlign:"center",verticalAlign:"middle"}}>
+                      <div style={{color:c.conf>0?"#16a34a":"#ccc",fontSize:14,fontWeight:800,lineHeight:1}}>{fmt(c.conf)}h</div>
+                      {c.est>0 && (
+                        <div style={{color:"#999",fontSize:10,fontStyle:"italic",marginTop:2,lineHeight:1}}>+{fmt(c.est)}h</div>
+                      )}
+                    </td>
+                  ))}
+                  <td style={{padding:"8px 8px",textAlign:"center",background:"#fffbea",verticalAlign:"middle"}}>
+                    <div style={{color:"#16a34a",fontSize:15,fontWeight:800,lineHeight:1}}>{fmt(row.totConf)}h</div>
+                    {row.totEst>0 && (
+                      <div style={{color:"#999",fontSize:10,fontStyle:"italic",marginTop:2,lineHeight:1}}>+{fmt(row.totEst)}h</div>
+                    )}
+                    <div style={{color:"#1a1a1a",fontSize:10,fontWeight:800,marginTop:4,paddingTop:3,borderTop:"1px dashed #e8e8e2"}}>={fmt(row.totConf+row.totEst)}h</div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{padding:"10px 14px",background:"#fafaf8",borderTop:"1px solid #e8e8e2",fontSize:10,color:"#888",lineHeight:1.6}}>
+          <span style={{color:"#16a34a",fontWeight:800}}>Verde</span> = ore confermate · <span style={{color:"#999",fontStyle:"italic"}}>Grigio +Xh</span> = ore stimate dalle preferenze (giorni non ancora confermati)
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Hours({ data }) {
+  const [tab, setTab]           = useState("calendar");
+  const [confirmed, setConfirmed] = useState([]);
+  const [loading, setLoading]   = useState(true);
+
+  async function reload() {
+    setLoading(true);
+    setConfirmed(await tcAll());
+    setLoading(false);
+  }
+  useEffect(()=>{ reload(); },[]);
+
+  return (
+    <div style={{padding:"8px 0 24px",display:"flex",flexDirection:"column",gap:6,flex:1}}>
+      <div style={{display:"flex",gap:6,padding:"0 14px"}}>
+        <button onClick={()=>setTab("calendar")} style={{flex:1,padding:"10px 8px",background:tab==="calendar"?"#1a1a1a":"#fff",color:tab==="calendar"?"#F5C200":"#888",border:`2px solid ${tab==="calendar"?"#1a1a1a":"#e0e0d8"}`,borderRadius:10,fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.5}}>📅 Conferma turni</button>
+        <button onClick={()=>setTab("summary")}  style={{flex:1,padding:"10px 8px",background:tab==="summary" ?"#1a1a1a":"#fff",color:tab==="summary" ?"#F5C200":"#888",border:`2px solid ${tab==="summary" ?"#1a1a1a":"#e0e0d8"}`,borderRadius:10,fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.5}}>📊 Riepilogo ore</button>
+      </div>
+      {loading ? (
+        <div style={{padding:30,textAlign:"center",color:"#888",fontFamily:"'Josefin Sans',sans-serif"}}>Caricamento…</div>
+      ) : (
+        tab==="calendar"
+          ? <HoursCalendar data={data} confirmed={confirmed} reload={reload}/>
+          : <HoursSummary  data={data} confirmed={confirmed}/>
+      )}
+    </div>
+  );
+}
+
 // ─── ADMIN ────────────────────────────────────────────────────────────────
 function Admin({ onBack }) {
   const [mi, setMi]       = useState(0);
@@ -793,15 +1160,16 @@ function Admin({ onBack }) {
           <div style={S.barLabel}>Admin · ASC Hotel Piscina</div>
           <div style={S.barName}>Turni 2026</div>
         </div>
-        <div style={{display:"flex",gap:6}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
           <button onClick={()=>setView("calendar")}  style={{...S.pill,cursor:"pointer",background:view==="calendar"?"#F5C200":"#f0f0ea",color:view==="calendar"?"#1a1a1a":"#aaa"}}>📅</button>
           <button onClick={()=>setView("checklist")} style={{...S.pill,cursor:"pointer",background:view==="checklist"?"#16a34a":"#f0f0ea",color:view==="checklist"?"#fff":"#aaa"}}>✓</button>
+          <button onClick={()=>setView("hours")}     style={{...S.pill,cursor:"pointer",background:view==="hours"?"#1a1a1a":"#f0f0ea",color:view==="hours"?"#F5C200":"#aaa"}}>🕒</button>
           <button onClick={()=>setView("export")}    style={{...S.pill,cursor:"pointer",background:view==="export"?"#2563eb":"#f0f0ea",color:view==="export"?"#fff":"#aaa"}}>AI</button>
         </div>
       </div>
 
       {/* Staff chips */}
-      {view!=="checklist" && (
+      {view!=="checklist" && view!=="hours" && (
       <div style={{padding:"10px 14px",display:"flex",gap:6,flexWrap:"wrap"}}>
         {data.map(r=>{
           const tot = MONTHS.reduce((a,mo)=>{
@@ -846,6 +1214,9 @@ function Admin({ onBack }) {
 
       {/* CHECKLIST VIEW */}
       {view==="checklist" && <AdminChecklist/>}
+
+      {/* HOURS VIEW */}
+      {view==="hours" && <Hours data={data}/>}
 
       {/* EXPORT VIEW */}
       {view==="export" && (
