@@ -57,6 +57,99 @@ async function sbAll() {
   }
 }
 
+// ─── CHECKLIST API ─────────────────────────────────────────────────────────
+const TABLE_CK_TASKS = "checklist_tasks";
+const TABLE_CK_COMP  = "checklist_completamenti";
+
+const CK_CATS = [
+  { id:"INGRESSO",   label:"Ingresso",       sublabel:"Turno mattina",       icon:"🌅", color:"#16a34a", daily:true  },
+  { id:"USCITA",     label:"Uscita",         sublabel:"Turno sera",          icon:"🌇", color:"#dc2626", daily:true  },
+  { id:"PERIODICHE", label:"Periodiche",     sublabel:"Reset manuale admin", icon:"🔁", color:"#2563eb", daily:false },
+  { id:"OCCORRENZA", label:"All'occorrenza", sublabel:"Su necessità",        icon:"⚡", color:"#f59e0b", daily:false },
+];
+
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function hhmm(iso) {
+  if(!iso) return "";
+  return new Date(iso).toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"});
+}
+function dateLabel(iso) {
+  if(!iso) return "";
+  return new Date(iso).toLocaleString("it-IT",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+}
+
+async function ckTasks() {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${TABLE_CK_TASKS}?select=*&order=categoria.asc,ordine.asc`, { headers: H });
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch(e) { console.error("ckTasks",e); return []; }
+}
+async function ckCompletionsByDate(date) {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${TABLE_CK_COMP}?select=*&data=eq.${date}&order=completato_alle.desc`, { headers: H });
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch(e) { console.error("ckCompletionsByDate",e); return []; }
+}
+async function ckCompletionsForTasks(taskIds) {
+  if(!taskIds.length) return [];
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${TABLE_CK_COMP}?select=*&task_id=in.(${taskIds.join(",")})&order=completato_alle.desc`, { headers: H });
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch(e) { console.error("ckCompletionsForTasks",e); return []; }
+}
+async function ckComplete(task_id, bagnino) {
+  const body = JSON.stringify({ task_id, bagnino, data: todayISO(), completato_alle: new Date().toISOString() });
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${TABLE_CK_COMP}`, { method:"POST", headers: H, body });
+    return (await r.json())?.[0];
+  } catch(e) { console.error("ckComplete",e); return null; }
+}
+async function ckDeleteCompletion(id) {
+  try { await fetch(`${SB_URL}/rest/v1/${TABLE_CK_COMP}?id=eq.${id}`, { method:"DELETE", headers: H }); }
+  catch(e) { console.error("ckDeleteCompletion",e); }
+}
+async function ckDeleteCompletionsTodayForTask(task_id) {
+  try { await fetch(`${SB_URL}/rest/v1/${TABLE_CK_COMP}?task_id=eq.${task_id}&data=eq.${todayISO()}`, { method:"DELETE", headers: H }); }
+  catch(e) { console.error("ckDeleteCompletionsTodayForTask",e); }
+}
+// Admin ops (use service key)
+async function ckAddTask({ categoria, titolo, ordine }) {
+  const body = JSON.stringify({ categoria, titolo, ordine: ordine||0 });
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${TABLE_CK_TASKS}`, { method:"POST", headers: H_ADMIN, body });
+    return (await r.json())?.[0];
+  } catch(e) { console.error("ckAddTask",e); return null; }
+}
+async function ckDeleteTask(id) {
+  try { await fetch(`${SB_URL}/rest/v1/${TABLE_CK_TASKS}?id=eq.${id}`, { method:"DELETE", headers: H_ADMIN }); }
+  catch(e) { console.error("ckDeleteTask",e); }
+}
+async function ckResetCategory(categoria) {
+  const body = JSON.stringify({ reset_il: new Date().toISOString() });
+  try { await fetch(`${SB_URL}/rest/v1/${TABLE_CK_TASKS}?categoria=eq.${categoria}`, { method:"PATCH", headers: H_ADMIN, body }); }
+  catch(e) { console.error("ckResetCategory",e); }
+}
+
+// Returns the completion that counts as "done" for a task, or null
+function taskStatus(task, completions, date) {
+  const d = date || todayISO();
+  if (task.categoria === "INGRESSO" || task.categoria === "USCITA") {
+    const c = completions.find(x => x.task_id === task.id && x.data === d);
+    return c || null;
+  }
+  const cs = completions.filter(x => x.task_id === task.id);
+  const resetAt = task.reset_il ? new Date(task.reset_il) : null;
+  const valid = cs.filter(c => !resetAt || new Date(c.completato_alle) > resetAt);
+  if(!valid.length) return null;
+  return valid.sort((a,b)=>new Date(b.completato_alle)-new Date(a.completato_alle))[0];
+}
+
 // ─── CALENDAR CONFIG ───────────────────────────────────────────────────────
 const YEAR = 2026;
 const MONTHS = [
@@ -308,8 +401,277 @@ function Done({ name, onEdit }) {
         Le tue preferenze sono state salvate.<br/>Puoi rientrare in qualsiasi momento per modificarle.
       </div>
       <button onClick={onEdit} style={{background:"transparent",border:"2px solid #e0e0d8",color:"#888",fontSize:13,padding:"12px 28px",borderRadius:10,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",fontWeight:700}}>
-        ✏️ Modifica preferenze
+        ← Torna al menu
       </button>
+    </div>
+  );
+}
+
+// ─── HUB (dopo login) ─────────────────────────────────────────────────────
+function Hub({ name, onPrefs, onCheck, onBack }) {
+  return (
+    <div style={S.page}>
+      <div style={S.bar}>
+        <button onClick={onBack} style={S.back}>←</button>
+        <div style={{flex:1}}>
+          <div style={S.barLabel}>Ciao 👋</div>
+          <div style={S.barName}>{name}</div>
+        </div>
+      </div>
+      <div style={{padding:"24px 22px",display:"flex",flexDirection:"column",gap:14,flex:1}}>
+        <button onClick={onPrefs} style={{padding:"22px 18px",background:"#F5C200",color:"#1a1a1a",border:"none",borderRadius:14,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:14,textAlign:"left",boxShadow:"0 2px 8px #0000000d"}}>
+          <span style={{fontSize:34}}>📅</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:16,fontWeight:800}}>Preferenze Turni</div>
+            <div style={{fontSize:11,fontWeight:600,opacity:0.7,marginTop:2}}>Assenze e turni preferiti per l'estate 2026</div>
+          </div>
+          <span style={{fontSize:22}}>→</span>
+        </button>
+        <button onClick={onCheck} style={{padding:"22px 18px",background:"#16a34a",color:"#fff",border:"none",borderRadius:14,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:14,textAlign:"left",boxShadow:"0 2px 8px #0000000d"}}>
+          <span style={{fontSize:34}}>✅</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:16,fontWeight:800}}>Checklist Giornaliera</div>
+            <div style={{fontSize:11,fontWeight:600,opacity:0.85,marginTop:2}}>Task ingresso/uscita e azioni periodiche</div>
+          </div>
+          <span style={{fontSize:22}}>→</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── CHECKLIST (bagnino) ──────────────────────────────────────────────────
+function Checklist({ name, onBack }) {
+  const [tasks, setTasks]             = useState([]);
+  const [completions, setCompletions] = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [busyId, setBusyId]           = useState(null);
+
+  async function load() {
+    setLoading(true);
+    const t = await ckTasks();
+    setTasks(t);
+    const dayComp     = await ckCompletionsByDate(todayISO());
+    const nonDailyIds = t.filter(x => x.categoria==="PERIODICHE"||x.categoria==="OCCORRENZA").map(x=>x.id);
+    const histComp    = nonDailyIds.length ? await ckCompletionsForTasks(nonDailyIds) : [];
+    const seen = new Set(dayComp.map(c=>c.id));
+    const all  = [...dayComp];
+    histComp.forEach(c => { if(!seen.has(c.id)){ all.push(c); seen.add(c.id); } });
+    setCompletions(all);
+    setLoading(false);
+  }
+  useEffect(()=>{ load(); },[]);
+
+  async function toggle(task) {
+    if(busyId) return;
+    setBusyId(task.id);
+    const s = taskStatus(task, completions);
+    if (s) {
+      if (task.categoria === "INGRESSO" || task.categoria === "USCITA") {
+        await ckDeleteCompletionsTodayForTask(task.id);
+      } else {
+        await ckDeleteCompletion(s.id);
+      }
+    } else {
+      await ckComplete(task.id, name);
+    }
+    await load();
+    setBusyId(null);
+  }
+
+  if(loading) return (
+    <div style={{...S.page,alignItems:"center",justifyContent:"center"}}>
+      <div style={{color:"#888",fontFamily:"'Josefin Sans',sans-serif"}}>Caricamento checklist…</div>
+    </div>
+  );
+
+  return (
+    <div style={S.page}>
+      <div style={S.bar}>
+        <button onClick={onBack} style={S.back}>←</button>
+        <div style={{flex:1}}>
+          <div style={S.barLabel}>Checklist Giornaliera</div>
+          <div style={S.barName}>{name}</div>
+        </div>
+        <div style={S.pill}>{new Date().toLocaleDateString("it-IT",{day:"2-digit",month:"short"})}</div>
+      </div>
+
+      <div style={{padding:"12px 14px 32px",flex:1,display:"flex",flexDirection:"column",gap:14}}>
+        {CK_CATS.map(cat => {
+          const catTasks = tasks.filter(t => t.categoria === cat.id);
+          const doneCnt  = catTasks.filter(t => taskStatus(t, completions)).length;
+          return (
+            <div key={cat.id} style={{background:"#fff",borderRadius:14,border:"1px solid #e8e8e2",overflow:"hidden",boxShadow:"0 1px 4px #0000000a"}}>
+              <div style={{padding:"12px 14px",background:`${cat.color}15`,borderBottom:`2px solid ${cat.color}`,display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:22}}>{cat.icon}</span>
+                <div style={{flex:1}}>
+                  <div style={{color:cat.color,fontSize:12,fontWeight:800,letterSpacing:1.2}}>{cat.label.toUpperCase()}</div>
+                  <div style={{color:"#888",fontSize:10,fontWeight:600,marginTop:1}}>{cat.sublabel}</div>
+                </div>
+                <div style={{background:"#fff",color:cat.color,fontSize:11,fontWeight:800,padding:"3px 10px",borderRadius:20,border:`1px solid ${cat.color}40`}}>
+                  {doneCnt}/{catTasks.length}
+                </div>
+              </div>
+              <div>
+                {catTasks.length===0 && (
+                  <div style={{padding:"18px",color:"#bbb",fontSize:12,textAlign:"center"}}>Nessun task in questa categoria</div>
+                )}
+                {catTasks.map(t => {
+                  const s = taskStatus(t, completions);
+                  const done = !!s;
+                  return (
+                    <button key={t.id} onClick={()=>toggle(t)} disabled={busyId===t.id} style={{
+                      display:"flex",alignItems:"center",gap:12,
+                      width:"100%",padding:"12px 14px",
+                      background: done ? "#f0fdf4" : "#fff",
+                      border:"none",
+                      borderTop:"1px solid #f0f0ea",
+                      cursor: busyId===t.id ? "wait" : "pointer",
+                      textAlign:"left",fontFamily:"'Josefin Sans',sans-serif",
+                      opacity: busyId===t.id ? 0.6 : 1,
+                    }}>
+                      <div style={{
+                        width:24,height:24,borderRadius:6,
+                        border:`2px solid ${done?"#16a34a":"#d0d0c8"}`,
+                        background:done?"#16a34a":"#fff",
+                        display:"flex",alignItems:"center",justifyContent:"center",
+                        flexShrink:0,
+                      }}>
+                        {done && <span style={{color:"#fff",fontSize:14,fontWeight:800,lineHeight:1}}>✓</span>}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{color:"#1a1a1a",fontSize:13,fontWeight:700,textDecoration:done?"line-through":"none",opacity:done?0.65:1,lineHeight:1.3}}>{t.titolo}</div>
+                        {done && (
+                          <div style={{color:"#16a34a",fontSize:10,fontWeight:700,marginTop:3,letterSpacing:0.2}}>
+                            ✓ {s.bagnino} · {hhmm(s.completato_alle)}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── ADMIN CHECKLIST ──────────────────────────────────────────────────────
+function AdminChecklist() {
+  const [tasks, setTasks]             = useState([]);
+  const [completions, setCompletions] = useState([]);
+  const [date, setDate]               = useState(todayISO());
+  const [loading, setLoading]         = useState(true);
+  const [newTitle, setNewTitle]       = useState({ INGRESSO:"", USCITA:"", PERIODICHE:"", OCCORRENZA:"" });
+
+  async function load() {
+    setLoading(true);
+    const t = await ckTasks();
+    setTasks(t);
+    const dayComp     = await ckCompletionsByDate(date);
+    const nonDailyIds = t.filter(x => !["INGRESSO","USCITA"].includes(x.categoria)).map(x=>x.id);
+    const histComp    = nonDailyIds.length ? await ckCompletionsForTasks(nonDailyIds) : [];
+    const seen = new Set(dayComp.map(c=>c.id));
+    const all  = [...dayComp];
+    histComp.forEach(c => { if(!seen.has(c.id)){ all.push(c); seen.add(c.id); } });
+    setCompletions(all);
+    setLoading(false);
+  }
+  useEffect(()=>{ load(); /* eslint-disable-next-line */ },[date]);
+
+  async function addTask(cat) {
+    const title = newTitle[cat].trim();
+    if(!title) return;
+    const catTasks = tasks.filter(t => t.categoria===cat);
+    const ord = catTasks.length ? Math.max(...catTasks.map(t => t.ordine||0)) + 10 : 10;
+    await ckAddTask({ categoria: cat, titolo: title, ordine: ord });
+    setNewTitle({...newTitle,[cat]:""});
+    await load();
+  }
+  async function delTask(id, titolo) {
+    if(!window.confirm(`Eliminare il task "${titolo}"?\n(verranno rimossi anche tutti i completamenti collegati)`)) return;
+    await ckDeleteTask(id);
+    await load();
+  }
+  async function resetCat(cat) {
+    if(!window.confirm(`Resettare tutti i task della categoria ${cat}?\nVerranno marcati come "da fare".`)) return;
+    await ckResetCategory(cat);
+    await load();
+  }
+
+  if(loading) return (
+    <div style={{padding:"24px",color:"#888",fontFamily:"'Josefin Sans',sans-serif",textAlign:"center"}}>Caricamento checklist…</div>
+  );
+
+  return (
+    <div style={{padding:"12px 14px 32px",flex:1,display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid #e8e8e2",display:"flex",alignItems:"center",gap:10,boxShadow:"0 1px 4px #0000000a",flexWrap:"wrap"}}>
+        <div style={{color:"#888",fontSize:10,fontWeight:800,letterSpacing:1.2,flex:1,minWidth:"100%",marginBottom:2}}>STORICO PER DATA (giornaliere)</div>
+        <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{padding:"7px 10px",border:"2px solid #e0e0d8",borderRadius:8,fontFamily:"'Josefin Sans',sans-serif",fontSize:12,color:"#1a1a1a",outline:"none"}}/>
+        <button onClick={()=>setDate(todayISO())} style={{padding:"7px 12px",background:"#f0f0ea",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",color:"#888"}}>Oggi</button>
+        <div style={{color:"#bbb",fontSize:10,marginLeft:"auto"}}>Le periodiche/occorrenza non dipendono dalla data</div>
+      </div>
+
+      {CK_CATS.map(cat => {
+        const catTasks = tasks.filter(t => t.categoria === cat.id);
+        return (
+          <div key={cat.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e8e8e2",overflow:"hidden",boxShadow:"0 1px 4px #0000000a"}}>
+            <div style={{padding:"12px 14px",background:`${cat.color}15`,borderBottom:`2px solid ${cat.color}`,display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:20}}>{cat.icon}</span>
+              <div style={{flex:1}}>
+                <div style={{color:cat.color,fontSize:12,fontWeight:800,letterSpacing:1.2}}>{cat.label.toUpperCase()}</div>
+                <div style={{color:"#888",fontSize:10}}>{cat.sublabel}</div>
+              </div>
+              {!cat.daily && (
+                <button onClick={()=>resetCat(cat.id)} style={{padding:"6px 12px",background:cat.color,color:"#fff",border:"none",borderRadius:6,fontSize:10,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.5}}>
+                  ⟳ Reset
+                </button>
+              )}
+            </div>
+
+            <div>
+              {catTasks.length===0 && (
+                <div style={{padding:"14px",color:"#bbb",fontSize:11,textAlign:"center"}}>Nessun task</div>
+              )}
+              {catTasks.map(t => {
+                const s = taskStatus(t, completions, date);
+                const done = !!s;
+                return (
+                  <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderTop:"1px solid #f0f0ea",background:done?"#f0fdf4":"#fff"}}>
+                    <div style={{width:18,height:18,borderRadius:5,border:`2px solid ${done?"#16a34a":"#d0d0c8"}`,background:done?"#16a34a":"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      {done && <span style={{color:"#fff",fontSize:11,fontWeight:800,lineHeight:1}}>✓</span>}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{color:"#1a1a1a",fontSize:12,fontWeight:700,lineHeight:1.3}}>{t.titolo}</div>
+                      {done ? (
+                        <div style={{color:"#16a34a",fontSize:10,fontWeight:700,marginTop:2}}>
+                          {s.bagnino} · {dateLabel(s.completato_alle)}
+                        </div>
+                      ) : (
+                        <div style={{color:"#bbb",fontSize:10,marginTop:2}}>— non completato</div>
+                      )}
+                    </div>
+                    <button onClick={()=>delTask(t.id,t.titolo)} style={{background:"none",border:"none",color:"#e63946",fontSize:15,cursor:"pointer",padding:"2px 6px",lineHeight:1}} title="Elimina task">✕</button>
+                  </div>
+                );
+              })}
+              <div style={{display:"flex",gap:6,padding:"10px 14px",borderTop:"1px solid #f0f0ea",background:"#fafaf8"}}>
+                <input
+                  value={newTitle[cat.id]}
+                  onChange={e=>setNewTitle({...newTitle,[cat.id]:e.target.value})}
+                  onKeyDown={e=>e.key==="Enter"&&addTask(cat.id)}
+                  placeholder="Nuovo task…"
+                  style={{flex:1,padding:"8px 10px",border:"2px solid #e0e0d8",borderRadius:6,fontSize:12,fontFamily:"'Josefin Sans',sans-serif",outline:"none",minWidth:0}}
+                />
+                <button onClick={()=>addTask(cat.id)} style={{padding:"8px 14px",background:cat.color,color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",whiteSpace:"nowrap"}}>+ Aggiungi</button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -432,12 +794,14 @@ function Admin({ onBack }) {
           <div style={S.barName}>Turni 2026</div>
         </div>
         <div style={{display:"flex",gap:6}}>
-          <button onClick={()=>setView("calendar")} style={{...S.pill,cursor:"pointer",background:view==="calendar"?"#F5C200":"#f0f0ea",color:view==="calendar"?"#1a1a1a":"#aaa"}}>📅</button>
-          <button onClick={()=>setView("export")}   style={{...S.pill,cursor:"pointer",background:view==="export"?"#16a34a":"#f0f0ea",color:view==="export"?"#fff":"#aaa"}}>AI</button>
+          <button onClick={()=>setView("calendar")}  style={{...S.pill,cursor:"pointer",background:view==="calendar"?"#F5C200":"#f0f0ea",color:view==="calendar"?"#1a1a1a":"#aaa"}}>📅</button>
+          <button onClick={()=>setView("checklist")} style={{...S.pill,cursor:"pointer",background:view==="checklist"?"#16a34a":"#f0f0ea",color:view==="checklist"?"#fff":"#aaa"}}>✓</button>
+          <button onClick={()=>setView("export")}    style={{...S.pill,cursor:"pointer",background:view==="export"?"#2563eb":"#f0f0ea",color:view==="export"?"#fff":"#aaa"}}>AI</button>
         </div>
       </div>
 
       {/* Staff chips */}
+      {view!=="checklist" && (
       <div style={{padding:"10px 14px",display:"flex",gap:6,flexWrap:"wrap"}}>
         {data.map(r=>{
           const tot = MONTHS.reduce((a,mo)=>{
@@ -457,6 +821,7 @@ function Admin({ onBack }) {
         })}
         {data.length===0 && <div style={{color:"#ccc",fontSize:12}}>Nessun dato ancora</div>}
       </div>
+      )}
 
       {/* Confirm delete modal */}
       {confirmDelete && (
@@ -478,6 +843,9 @@ function Admin({ onBack }) {
           </div>
         </div>
       )}
+
+      {/* CHECKLIST VIEW */}
+      {view==="checklist" && <AdminChecklist/>}
 
       {/* EXPORT VIEW */}
       {view==="export" && (
@@ -658,7 +1026,7 @@ export default function App() {
     const existing = await sbGet(n);
     if(existing) { setAbsent(existing.absent||{}); setShifts(existing.shifts||{}); }
     else          { setAbsent({}); setShifts({}); }
-    setScreen("step1");
+    setScreen("hub");
   }
 
   async function handleSubmit() {
@@ -673,10 +1041,12 @@ export default function App() {
     else setAdminErr("Codice non corretto");
   }
 
-  if(screen==="step1") return <StepAbsent name={name.trim()} absent={absent} setAbsent={setAbsent} onNext={()=>setScreen("step2")}/>;
-  if(screen==="step2") return <StepShifts name={name.trim()} absent={absent} shifts={shifts} setShifts={setShifts} onBack={()=>setScreen("step1")} onSubmit={handleSubmit} saving={saving}/>;
-  if(screen==="done")  return <Done name={name.trim()} onEdit={()=>setScreen("step1")}/>;
-  if(screen==="admin") return <Admin onBack={()=>setScreen("home")}/>;
+  if(screen==="hub")       return <Hub name={name.trim()} onPrefs={()=>setScreen("step1")} onCheck={()=>setScreen("checklist")} onBack={()=>setScreen("home")}/>;
+  if(screen==="checklist") return <Checklist name={name.trim()} onBack={()=>setScreen("hub")}/>;
+  if(screen==="step1")     return <StepAbsent name={name.trim()} absent={absent} setAbsent={setAbsent} onNext={()=>setScreen("step2")}/>;
+  if(screen==="step2")     return <StepShifts name={name.trim()} absent={absent} shifts={shifts} setShifts={setShifts} onBack={()=>setScreen("step1")} onSubmit={handleSubmit} saving={saving}/>;
+  if(screen==="done")      return <Done name={name.trim()} onEdit={()=>setScreen("hub")}/>;
+  if(screen==="admin")     return <Admin onBack={()=>setScreen("home")}/>;
 
   if(screen==="adminLogin") return (
     <div style={{minHeight:"100vh",background:"#f5f5f0",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Josefin Sans',sans-serif",padding:24}}>
