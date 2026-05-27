@@ -136,6 +136,11 @@ function hhmm(iso) {
   if(!iso) return "";
   return new Date(iso).toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"});
 }
+function ddmm(iso) {
+  if(!iso) return "";
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}`;
+}
 function dateLabel(iso) {
   if(!iso) return "";
   return new Date(iso).toLocaleString("it-IT",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
@@ -192,6 +197,13 @@ async function ckDeleteTask(id) {
   try { await fetch(`${SB_URL}/rest/v1/${TABLE_CK_TASKS}?id=eq.${id}`, { method:"PATCH", headers: H_ADMIN, body }); }
   catch(e) { console.error("ckDeleteTask",e); }
 }
+// Patch an existing task (e.g. frequenza_giorni)
+async function ckUpdateTask(id, patch) {
+  try {
+    const body = JSON.stringify(patch);
+    await fetch(`${SB_URL}/rest/v1/${TABLE_CK_TASKS}?id=eq.${id}`, { method:"PATCH", headers: H_ADMIN, body });
+  } catch(e) { console.error("ckUpdateTask",e); }
+}
 // Reset: delete ALL completamenti for every task in the category (no date filter)
 async function ckResetCategory(categoria) {
   try {
@@ -206,6 +218,10 @@ async function ckResetCategory(categoria) {
 // Returns the completion that counts as "done" for a task, or null.
 // Daily categories (INGRESSO/USCITA) → must match the given date (or today).
 // Periodic categories → any completion makes the task done; reset clears all rows.
+// PERIODICHE with frequenza_giorni → completion "expires" after N days:
+//   - while fresh: returns the completion with extra _locked=true and
+//     _nextDue=ISO date of when it becomes due again (non-clickable for users).
+//   - when expired: returns null (task is "todo" again, no manual reset needed).
 function taskStatus(task, completions, date) {
   const d = date || todayISO();
   if (task.categoria === "INGRESSO" || task.categoria === "USCITA") {
@@ -214,7 +230,14 @@ function taskStatus(task, completions, date) {
   }
   const cs = completions.filter(x => x.task_id === task.id);
   if(!cs.length) return null;
-  return cs.slice().sort((a,b)=>new Date(b.completato_alle)-new Date(a.completato_alle))[0];
+  const latest = cs.slice().sort((a,b)=>new Date(b.completato_alle)-new Date(a.completato_alle))[0];
+  if (task.categoria === "PERIODICHE" && task.frequenza_giorni && Number(task.frequenza_giorni) > 0) {
+    const due = new Date(latest.completato_alle);
+    due.setDate(due.getDate() + Number(task.frequenza_giorni));
+    if (due.getTime() <= Date.now()) return null;          // expired → reappears as todo
+    return { ...latest, _locked: true, _nextDue: due.toISOString() };
+  }
+  return latest;
 }
 
 // ─── CALENDAR CONFIG ───────────────────────────────────────────────────────
@@ -532,11 +555,12 @@ function Checklist({ name, onBack }) {
   async function toggle(task) {
     if(busyId) return;
     const s = taskStatus(task, completions);
-    // If completed by someone else → no-op (locked)
+    // PERIODICHE entro la finestra di frequenza → non cliccabile per nessuno
+    if (s && s._locked) return;
+    // Completato da altri → no-op
     if (s && s.bagnino !== name) return;
     setBusyId(task.id);
     if (s) {
-      // Uncheck — delete only the completion of the current user
       await ckDeleteCompletion(s.id);
     } else {
       await ckComplete(task.id, name);
@@ -583,33 +607,39 @@ function Checklist({ name, onBack }) {
                   <div style={{padding:"18px",color:"#bbb",fontSize:12,textAlign:"center"}}>Nessun task in questa categoria</div>
                 )}
                 {catTasks.map(t => {
-                  const s        = taskStatus(t, completions);
-                  const done     = !!s;
-                  const mine     = done && s.bagnino === name;
-                  const lockedBy = done && !mine ? s.bagnino : null;
+                  const s          = taskStatus(t, completions);
+                  const done       = !!s;
+                  const mine       = done && s.bagnino === name;
+                  const lockedBy   = done && !mine ? s.bagnino : null;
+                  const freqLocked = !!(done && s._locked);
+                  const interactive = !freqLocked && (!done || mine);
                   return (
                     <button key={t.id} onClick={()=>toggle(t)} disabled={busyId===t.id} style={{
                       display:"flex",alignItems:"center",gap:12,
                       width:"100%",padding:"12px 14px",
-                      background: done ? "#f0fdf4" : "#fff",
+                      background: freqLocked ? "#f5f5f0" : (done ? "#f0fdf4" : "#fff"),
                       border:"none",
                       borderTop:"1px solid #f0f0ea",
-                      cursor: busyId===t.id ? "wait" : (done && !mine ? "default" : "pointer"),
+                      cursor: busyId===t.id ? "wait" : (interactive ? "pointer" : "default"),
                       textAlign:"left",fontFamily:"'Josefin Sans',sans-serif",
                       opacity: busyId===t.id ? 0.6 : 1,
                     }}>
                       <div style={{
                         width:24,height:24,borderRadius:6,
-                        border:`2px solid ${done?"#16a34a":"#d0d0c8"}`,
-                        background:done?"#16a34a":"#fff",
+                        border:`2px solid ${freqLocked ? "#bbb" : (done ? "#16a34a" : "#d0d0c8")}`,
+                        background: freqLocked ? "#bbb" : (done ? "#16a34a" : "#fff"),
                         display:"flex",alignItems:"center",justifyContent:"center",
                         flexShrink:0,
                       }}>
                         {done && <span style={{color:"#fff",fontSize:14,fontWeight:800,lineHeight:1}}>✓</span>}
                       </div>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{color:"#1a1a1a",fontSize:13,fontWeight:700,textDecoration:done?"line-through":"none",opacity:done?0.65:1,lineHeight:1.3}}>{t.titolo}</div>
-                        {done && (
+                        <div style={{color: freqLocked ? "#888" : "#1a1a1a",fontSize:13,fontWeight:700,textDecoration:done?"line-through":"none",opacity:done?0.65:1,lineHeight:1.3}}>{t.titolo}</div>
+                        {freqLocked ? (
+                          <div style={{color:"#888",fontSize:10,fontWeight:600,marginTop:3,letterSpacing:0.2,lineHeight:1.45}}>
+                            ✓ Fatto il {ddmm(s.completato_alle)} da {s.bagnino} · prossima volta: <span style={{color:"#9333ea",fontWeight:700}}>{ddmm(s._nextDue)}</span>
+                          </div>
+                        ) : done && (
                           <div style={{color:"#4ade80",fontSize:10,fontWeight:700,marginTop:3,letterSpacing:0.2,display:"flex",alignItems:"center",gap:4}}>
                             <span>✓ {s.bagnino} · {hhmm(s.completato_alle)}</span>
                             {lockedBy && <span style={{fontSize:9,color:"#aaa"}} title={`Solo ${lockedBy} può deselezionare`}>🔒</span>}
@@ -625,6 +655,27 @@ function Checklist({ name, onBack }) {
         })}
       </div>
     </div>
+  );
+}
+
+// Local-state input for editing frequenza_giorni; saves on blur / Enter
+function FreqInput({ task, onSave }) {
+  const [val, setVal] = useState(task.frequenza_giorni ?? "");
+  useEffect(()=>{ setVal(task.frequenza_giorni ?? ""); }, [task.frequenza_giorni]);
+  return (
+    <input
+      type="number" min="1" max="365"
+      value={val}
+      onChange={e => setVal(e.target.value)}
+      onBlur={() => {
+        const cur = String(task.frequenza_giorni ?? "");
+        if (String(val) !== cur) onSave(task.id, val);
+      }}
+      onKeyDown={e => { if (e.key === "Enter") e.target.blur(); }}
+      placeholder="—"
+      title="Numero di giorni dopo i quali il task torna 'da fare'"
+      style={{width:46,padding:"4px 6px",border:"2px solid #e9d5ff",borderRadius:5,fontSize:11,textAlign:"center",fontFamily:"'Josefin Sans',sans-serif",outline:"none",color:"#9333ea",fontWeight:800,background:"#fff"}}
+    />
   );
 }
 
@@ -669,6 +720,14 @@ function AdminChecklist() {
   async function resetCat(cat) {
     if(!window.confirm(`Resettare la categoria ${cat}?\nVerranno CANCELLATI tutti i completamenti registrati per i task di questa categoria.`)) return;
     await ckResetCategory(cat);
+    await load();
+  }
+  async function updateTaskFreq(id, raw) {
+    const num = parseInt(raw, 10);
+    const freq = (isNaN(num) || num <= 0) ? null : num;
+    // Optimistic update so the input feels snappy
+    setTasks(prev => prev.map(t => t.id === id ? {...t, frequenza_giorni: freq} : t));
+    await ckUpdateTask(id, { frequenza_giorni: freq });
     await load();
   }
 
@@ -733,8 +792,11 @@ function AdminChecklist() {
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{color:"#1a1a1a",fontSize:12,fontWeight:700,lineHeight:1.3}}>{t.titolo}</div>
                           {done ? (
-                            <div style={{color:"#16a34a",fontSize:10,fontWeight:700,marginTop:2}}>
+                            <div style={{color: s._locked ? "#888" : "#16a34a",fontSize:10,fontWeight:700,marginTop:2}}>
                               {s.bagnino} · {dateLabel(s.completato_alle)}
+                              {s._locked && (
+                                <span style={{color:"#9333ea",fontStyle:"italic",fontWeight:700,marginLeft:6}}>· prossima: {ddmm(s._nextDue)}</span>
+                              )}
                             </div>
                           ) : (
                             <div style={{color:"#bbb",fontSize:10,marginTop:2}}>— non completato</div>
@@ -775,9 +837,16 @@ function AdminChecklist() {
                     <div style={{padding:"14px",color:"#bbb",fontSize:11,textAlign:"center"}}>Nessun task</div>
                   )}
                   {catTasks.map(t => (
-                    <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderTop:"1px solid #f0f0ea"}}>
+                    <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderTop:"1px solid #f0f0ea",flexWrap:"wrap"}}>
                       <div style={{width:6,height:6,borderRadius:"50%",background:cat.color,flexShrink:0}}/>
-                      <div style={{flex:1,minWidth:0,color:"#1a1a1a",fontSize:12,fontWeight:700,lineHeight:1.3}}>{t.titolo}</div>
+                      <div style={{flex:1,minWidth:120,color:"#1a1a1a",fontSize:12,fontWeight:700,lineHeight:1.3}}>{t.titolo}</div>
+                      {cat.id === "PERIODICHE" && (
+                        <div style={{display:"flex",alignItems:"center",gap:5,color:cat.color,fontSize:10,fontWeight:700,letterSpacing:0.3}}>
+                          <span>ogni</span>
+                          <FreqInput task={t} onSave={updateTaskFreq}/>
+                          <span>giorni</span>
+                        </div>
+                      )}
                       <button onClick={()=>delTask(t.id,t.titolo)} style={{background:"none",border:"none",color:"#e63946",fontSize:15,cursor:"pointer",padding:"2px 6px",lineHeight:1}} title="Rimuovi task">✕</button>
                     </div>
                   ))}
