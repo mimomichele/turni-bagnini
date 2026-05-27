@@ -78,30 +78,43 @@ async function tcAll() {
   } catch(e) { console.error("tcAll",e); return []; }
 }
 
-// Atomic replace: delete all rows for date, then insert the new ones
+// Atomic replace: delete all rows for date, then insert the new ones.
+// Uses the anon key (H) — requires an RLS policy on turni_confermati allowing
+// insert/delete to anon. Errors are surfaced (not swallowed) so the UI can react.
 async function tcReplaceForDay(date, assignments) {
-  try {
-    await fetch(`${SB_URL}/rest/v1/${TABLE_TC}?data=eq.${date}`, { method:"DELETE", headers: H_ADMIN });
-    if(!assignments.length) return [];
-    const body = JSON.stringify(assignments.map(a => ({
-      data: date,
-      bagnino: a.bagnino,
-      turno: a.turno,
-      ore: a.ore,
-      aggiornato_il: new Date().toISOString(),
-    })));
-    const r = await fetch(`${SB_URL}/rest/v1/${TABLE_TC}`, { method:"POST", headers: H_ADMIN, body });
-    return await r.json();
-  } catch(e) { console.error("tcReplaceForDay",e); return []; }
+  const delResp = await fetch(`${SB_URL}/rest/v1/${TABLE_TC}?data=eq.${date}`, { method:"DELETE", headers: H });
+  if(!delResp.ok) {
+    const txt = await delResp.text().catch(()=>"");
+    console.error("tcReplaceForDay DELETE failed", delResp.status, txt);
+    throw new Error(`DELETE failed: ${delResp.status} ${txt}`);
+  }
+  if(!assignments.length) return [];
+  const body = JSON.stringify(assignments.map(a => ({
+    data: date,
+    bagnino: a.bagnino,
+    turno: a.turno,
+    ore: a.ore,
+    aggiornato_il: new Date().toISOString(),
+  })));
+  const insResp = await fetch(`${SB_URL}/rest/v1/${TABLE_TC}`, { method:"POST", headers: H, body });
+  if(!insResp.ok) {
+    const txt = await insResp.text().catch(()=>"");
+    console.error("tcReplaceForDay INSERT failed", insResp.status, txt);
+    throw new Error(`INSERT failed: ${insResp.status} ${txt}`);
+  }
+  return await insResp.json();
 }
 
 async function tcBulkInsert(rows) {
   if(!rows.length) return [];
-  try {
-    const body = JSON.stringify(rows.map(r => ({...r, aggiornato_il: new Date().toISOString()})));
-    const r = await fetch(`${SB_URL}/rest/v1/${TABLE_TC}`, { method:"POST", headers: H_ADMIN, body });
-    return await r.json();
-  } catch(e) { console.error("tcBulkInsert",e); return []; }
+  const body = JSON.stringify(rows.map(r => ({...r, aggiornato_il: new Date().toISOString()})));
+  const r = await fetch(`${SB_URL}/rest/v1/${TABLE_TC}`, { method:"POST", headers: H, body });
+  if(!r.ok) {
+    const txt = await r.text().catch(()=>"");
+    console.error("tcBulkInsert failed", r.status, txt);
+    throw new Error(`Bulk insert failed: ${r.status} ${txt}`);
+  }
+  return await r.json();
 }
 
 // ─── CHECKLIST API ─────────────────────────────────────────────────────────
@@ -810,6 +823,18 @@ function HoursCalendar({ data, confirmed, reload }) {
     });
     return res;
   }
+  // Number of "extra" overlapping preferences for the day.
+  // 2 bagnini sullo stesso turno → 1; 3 → 2; ecc. Sommato su tutti i turni.
+  function dayPrefConflicts(monthId, day) {
+    const counts = {};
+    dayPrefs(monthId, day).forEach(p => { counts[p.turno] = (counts[p.turno]||0) + 1; });
+    let extras = 0;
+    Object.values(counts).forEach(n => { if(n > 1) extras += n - 1; });
+    return extras;
+  }
+  function prefsForShift(monthId, day, sid) {
+    return dayPrefs(monthId, day).filter(p => p.turno === sid);
+  }
 
   function openEdit(day) {
     const monthId = m.id;
@@ -828,19 +853,29 @@ function HoursCalendar({ data, confirmed, reload }) {
     if(!editDay) return;
     const clean = editAssign.filter(a => a.bagnino && a.bagnino.trim());
     setSaving(true);
-    await tcReplaceForDay(dateStrOf(editDay.monthId, editDay.day), clean);
-    await reload();
-    setSaving(false);
-    setEditDay(null);
+    try {
+      await tcReplaceForDay(dateStrOf(editDay.monthId, editDay.day), clean);
+      await reload();
+      setEditDay(null);
+    } catch(e) {
+      window.alert(`Errore di salvataggio: ${e.message}\n\nProbabile causa: RLS su turni_confermati non permette insert/delete all'anon key.\nVedi README o le istruzioni SQL.`);
+    } finally {
+      setSaving(false);
+    }
   }
   async function clearDay() {
     if(!editDay) return;
     if(!window.confirm("Cancellare tutte le conferme di questo giorno?")) return;
     setSaving(true);
-    await tcReplaceForDay(dateStrOf(editDay.monthId, editDay.day), []);
-    await reload();
-    setSaving(false);
-    setEditDay(null);
+    try {
+      await tcReplaceForDay(dateStrOf(editDay.monthId, editDay.day), []);
+      await reload();
+      setEditDay(null);
+    } catch(e) {
+      window.alert(`Errore: ${e.message}`);
+    } finally {
+      setSaving(false);
+    }
   }
   async function confirmMonthFromPrefs() {
     if(!window.confirm(`Confermare l'intero mese di ${m.name} dalle preferenze?\nVerranno create le conferme solo per i giorni NON ancora confermati.`)) return;
@@ -856,8 +891,12 @@ function HoursCalendar({ data, confirmed, reload }) {
       }));
     }
     if(!rows.length) { window.alert("Nessun giorno da confermare"); return; }
-    await tcBulkInsert(rows);
-    await reload();
+    try {
+      await tcBulkInsert(rows);
+      await reload();
+    } catch(e) {
+      window.alert(`Errore: ${e.message}`);
+    }
   }
 
   function addAssign(turno) {
@@ -881,7 +920,7 @@ function HoursCalendar({ data, confirmed, reload }) {
         ))}
       </div>
 
-      <div style={{display:"flex",gap:8,alignItems:"center",padding:"8px 14px",flexWrap:"wrap"}}>
+      <div style={{display:"flex",gap:10,alignItems:"center",padding:"8px 14px",flexWrap:"wrap"}}>
         <div style={{display:"flex",alignItems:"center",gap:5}}>
           <div style={{width:10,height:10,background:"#dcfce7",borderRadius:2,border:"1px solid #86efac"}}/>
           <span style={{color:"#888",fontSize:10}}>Confermato</span>
@@ -889,6 +928,10 @@ function HoursCalendar({ data, confirmed, reload }) {
         <div style={{display:"flex",alignItems:"center",gap:5}}>
           <div style={{width:10,height:10,background:"#fef9c3",borderRadius:2,border:"1px solid #fde68a"}}/>
           <span style={{color:"#888",fontSize:10}}>Da preferenze</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:4}}>
+          <span style={{background:"#f97316",color:"#fff",fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:5,lineHeight:1.2}}>⚠️</span>
+          <span style={{color:"#888",fontSize:10}}>Conflitto preferenze</span>
         </div>
         <button onClick={confirmMonthFromPrefs} style={{marginLeft:"auto",padding:"6px 10px",background:"#16a34a",color:"#fff",border:"none",borderRadius:6,fontSize:10,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.3}}>
           ✓ Conferma mese da preferenze
@@ -908,6 +951,7 @@ function HoursCalendar({ data, confirmed, reload }) {
             const display = isConf ? conf.map(c=>({bagnino:c.bagnino,turno:c.turno,ore:Number(c.ore)}))
                                    : dayPrefs(m.id, day).map(p=>({bagnino:p.bagnino,turno:p.turno,ore:shiftHours(getDow(m.id,day),p.turno)}));
             const we = isWE(m.id, day);
+            const conflicts = dayPrefConflicts(m.id, day);
             return (
               <button key={day} onClick={()=>openEdit(day)} style={{
                 background: isConf ? "#dcfce7" : (display.length ? "#fef9c3" : "#fff"),
@@ -923,8 +967,15 @@ function HoursCalendar({ data, confirmed, reload }) {
               }}>
                 <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:3}}>
                   <div style={{fontSize:15,fontWeight:800,lineHeight:1,color:we?"#c79500":"#1a1a1a"}}>{day}</div>
-                  <div style={{fontSize:7,fontWeight:800,letterSpacing:0.3,color:isConf?"#166534":"#a16207",lineHeight:1}}>
-                    {isConf ? `✓ ${display.length}` : (display.length ? `~ ${display.length}` : "—")}
+                  <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:2}}>
+                    {conflicts > 0 && (
+                      <div title={`${conflicts} preferenz${conflicts===1?"a":"e"} sovrapposte`} style={{background:"#f97316",color:"#fff",fontSize:8,fontWeight:800,padding:"1px 4px",borderRadius:6,lineHeight:1.1,letterSpacing:0.2,whiteSpace:"nowrap"}}>
+                        ⚠️ {conflicts}
+                      </div>
+                    )}
+                    <div style={{fontSize:7,fontWeight:800,letterSpacing:0.3,color:isConf?"#166534":"#a16207",lineHeight:1}}>
+                      {isConf ? `✓ ${display.length}` : (display.length ? `~ ${display.length}` : "—")}
+                    </div>
                   </div>
                 </div>
                 <div style={{flex:1,display:"flex",flexDirection:"column",gap:1,minWidth:0}}>
@@ -955,11 +1006,21 @@ function HoursCalendar({ data, confirmed, reload }) {
               <button onClick={()=>setEditDay(null)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888",padding:"0 4px",lineHeight:1}}>✕</button>
             </div>
 
-            {editDay.defs.map(s => (
-              <div key={s.id} style={{marginBottom:12,padding:"10px 12px",border:"1px solid #e8e8e2",borderRadius:10,background:"#fafaf8"}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+            {editDay.defs.map(s => {
+              const prefs = prefsForShift(editDay.monthId, editDay.day, s.id);
+              const assignedNames = new Set(editAssign.filter(a => a.turno === s.id).map(a => a.bagnino));
+              const available = prefs.filter(p => !assignedNames.has(p.bagnino));
+              const overlap = prefs.length > 1;
+              return (
+              <div key={s.id} style={{marginBottom:12,padding:"10px 12px",border:`1px solid ${overlap?"#fdba74":"#e8e8e2"}`,borderRadius:10,background:overlap?"#fff7ed":"#fafaf8"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
                   <div style={{background:s.color,color:s.text,padding:"3px 10px",borderRadius:14,fontSize:11,fontWeight:800,letterSpacing:0.3}}>{s.label}</div>
                   <div style={{color:"#888",fontSize:11,fontWeight:700}}>{shiftHours(editDay.dow,s.id)}h std</div>
+                  {overlap && (
+                    <div style={{background:"#f97316",color:"#fff",fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:10,letterSpacing:0.3,marginLeft:"auto"}}>
+                      ⚠️ {prefs.length} in preferenza
+                    </div>
+                  )}
                 </div>
                 {editAssign.map((a,i)=>{
                   if (a.turno !== s.id) return null;
@@ -971,15 +1032,41 @@ function HoursCalendar({ data, confirmed, reload }) {
                       </select>
                       <input type="number" step="0.5" min="0" value={a.ore} onChange={e=>updateAssign(i,{ore:Number(e.target.value)})} style={{width:54,padding:"7px 6px",border:"2px solid #e0e0d8",borderRadius:6,fontSize:12,fontFamily:"'Josefin Sans',sans-serif",outline:"none",textAlign:"center",color:"#1a1a1a"}}/>
                       <span style={{fontSize:11,color:"#888",fontWeight:700}}>h</span>
-                      <button onClick={()=>removeAssign(i)} style={{background:"none",border:"none",color:"#e63946",cursor:"pointer",fontSize:14,padding:"4px 6px",lineHeight:1}}>✕</button>
+                      <button onClick={()=>removeAssign(i)} style={{background:"none",border:"none",color:"#e63946",cursor:"pointer",fontSize:14,padding:"4px 6px",lineHeight:1}} title="Rimuovi dalla conferma">✕</button>
                     </div>
                   );
                 })}
-                <button onClick={()=>addAssign(s.id)} style={{background:"#fff",border:"1.5px dashed #ccc",borderRadius:6,padding:"6px 10px",fontSize:10,cursor:"pointer",color:"#888",fontFamily:"'Josefin Sans',sans-serif",fontWeight:700,width:"100%",marginTop:4,letterSpacing:0.3}}>
-                  + Aggiungi bagnino a questo turno
+
+                {/* Disponibili (preferenze non ancora confermate) */}
+                {available.length > 0 && (
+                  <div style={{marginTop:6,padding:"6px 4px 2px",fontSize:10,color:"#888",lineHeight:1.6}}>
+                    <span style={{fontWeight:700,fontStyle:"normal",color:"#999",letterSpacing:0.3}}>Disponibili: </span>
+                    {available.map((p, i) => (
+                      <span key={p.bagnino}>
+                        {i > 0 && <span style={{color:"#bbb"}}>, </span>}
+                        <button
+                          onClick={()=>setEditAssign(prev => [...prev, { bagnino: p.bagnino, turno: s.id, ore: shiftHours(editDay.dow, s.id) }])}
+                          title="Aggiungi alle conferme"
+                          style={{background:"none",border:"none",padding:"0 2px",color:"#2563eb",fontStyle:"italic",cursor:"pointer",fontFamily:"inherit",fontSize:"inherit",textDecoration:"underline",fontWeight:600}}
+                        >
+                          {p.bagnino}
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {prefs.length === 0 && (
+                  <div style={{marginTop:6,padding:"6px 4px 2px",fontSize:10,color:"#bbb",fontStyle:"italic"}}>
+                    Nessuna preferenza espressa per questo turno
+                  </div>
+                )}
+
+                <button onClick={()=>addAssign(s.id)} style={{background:"#fff",border:"1.5px dashed #ccc",borderRadius:6,padding:"6px 10px",fontSize:10,cursor:"pointer",color:"#888",fontFamily:"'Josefin Sans',sans-serif",fontWeight:700,width:"100%",marginTop:8,letterSpacing:0.3}}>
+                  + Aggiungi altro bagnino (dal dropdown)
                 </button>
               </div>
-            ))}
+              );
+            })}
 
             <div style={{display:"flex",gap:6,marginTop:14}}>
               <button onClick={clearDay} disabled={saving} style={{flex:1,padding:"10px 6px",background:"#fff",border:"2px solid #fca5a5",borderRadius:8,fontSize:10,fontWeight:800,color:"#e63946",cursor:saving?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.3}}>🗑️ Reset</button>
