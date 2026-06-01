@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 // ─── SUPABASE CONFIG ───────────────────────────────────────────────────────
 const SB_URL      = import.meta.env.VITE_SUPABASE_URL;
@@ -912,11 +912,243 @@ function AdminChecklist() {
 }
 
 // ─── ORE DI LAVORO ────────────────────────────────────────────────────────
+// Renders the export-ready calendar at fixed 1200px. The outer <div> is the
+// target of html2canvas. Same visual rules as the admin calendar but bigger.
+function ExportCalendar({ innerRef, month, weeks, monthRows, staffNames }) {
+  return (
+    <div ref={innerRef} style={{
+      width:1200,padding:"32px 32px 28px",background:"#f5f5f0",
+      fontFamily:"'Josefin Sans',sans-serif",color:"#1a1a1a",
+      boxSizing:"border-box",
+    }}>
+      {/* Header */}
+      <div style={{textAlign:"center",marginBottom:24}}>
+        <div style={{color:"#c79500",fontSize:13,fontWeight:700,letterSpacing:5,textTransform:"uppercase",marginBottom:6}}>ASC Hotel · Piscina</div>
+        <div style={{color:"#1a1a1a",fontSize:38,fontWeight:800,lineHeight:1}}>Turni {month.name} {YEAR}</div>
+      </div>
+
+      {/* Week labels */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7, 1fr)",gap:10,marginBottom:8}}>
+        {WEEK_LABELS.map((l,i)=>(
+          <div key={i} style={{textAlign:"center",fontSize:13,fontWeight:800,color:i>=5?"#c79500":"#888",padding:"8px 0",letterSpacing:1.8}}>{l}</div>
+        ))}
+      </div>
+
+      {/* Cells */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7, 1fr)",gap:10}}>
+        {weeks.flat().map((day,idx) => {
+          if (!day) return <div key={`e${idx}`}/>;
+          const rows = monthRows.filter(r => r.data === dateStrOf(month.id, day));
+          const dow = getDow(month.id, day);
+          const we  = isWE(month.id, day);
+          const defs = getShifts(dow);
+          const byTurno = {};
+          rows.forEach(r => { (byTurno[r.turno] = byTurno[r.turno] || []).push(r); });
+          return (
+            <div key={day} style={{
+              background: we ? "#fffbea" : "#fff",
+              border: `2px solid ${we ? "#f5e070" : "#e8e8e2"}`,
+              borderRadius: 14,
+              padding: "12px 12px 10px",
+              minHeight: 140,
+              display: "flex", flexDirection: "column", gap: 6,
+              boxShadow: "0 2px 4px #0000000a",
+            }}>
+              <div style={{fontSize:26,fontWeight:800,lineHeight:1,color:we?"#c79500":"#1a1a1a"}}>{day}</div>
+              {defs.map(s => {
+                const ppl = byTurno[s.id] || [];
+                if (!ppl.length) return null;
+                return (
+                  <div key={s.id} style={{display:"flex",flexDirection:"column",gap:3,marginTop:2}}>
+                    <div style={{fontSize:12,fontWeight:800,color:s.color,letterSpacing:0.3}}>{shiftLabel(dow, s.id)}</div>
+                    {ppl.map(p => {
+                      const c = nameColor(p.bagnino);
+                      const first = p.bagnino.split(" ")[0];
+                      return (
+                        <div key={p.id} style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
+                          <div style={{width:9,height:9,borderRadius:"50%",background:c,flexShrink:0}}/>
+                          <div style={{fontSize:13,fontWeight:700,color:"#1a1a1a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{first}</div>
+                          <div style={{fontSize:11,color:"#999",fontWeight:600}}>{Number(p.ore)}h</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Staff legend */}
+      {staffNames.length > 0 && (
+        <div style={{marginTop:24,padding:"18px 20px",background:"#fff",border:"1px solid #e8e8e2",borderRadius:14,boxShadow:"0 1px 4px #0000000a"}}>
+          <div style={{fontSize:12,fontWeight:800,color:"#888",letterSpacing:1.8,marginBottom:14}}>STAFF</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:14}}>
+            {staffNames.map(nome => {
+              const c = nameColor(nome);
+              return (
+                <div key={nome} style={{display:"flex",alignItems:"center",gap:10,background:"#f9f9f6",padding:"7px 14px 7px 7px",borderRadius:24,border:"1px solid #eee"}}>
+                  <div style={{width:34,height:34,borderRadius:"50%",background:c,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,letterSpacing:0.5,boxShadow:"0 1px 3px #00000020"}}>{nameInitials(nome)}</div>
+                  <div style={{fontSize:14,fontWeight:700,color:"#1a1a1a"}}>{nome}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Lazy-load a script tag and resolve once it executed
+function loadScriptOnce(url) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[data-src="${url}"]`)) return resolve();
+    const s = document.createElement("script");
+    s.src = url;
+    s.dataset.src = url;
+    s.onload  = () => resolve();
+    s.onerror = () => reject(new Error(`Failed to load ${url}`));
+    document.head.appendChild(s);
+  });
+}
+
+function ExportTurniModal({ confirmed, onClose }) {
+  const [mi, setMi]               = useState(0);
+  const [busy, setBusy]           = useState(false);
+  const [busyLabel, setBusyLabel] = useState("");
+  const calRef = useRef(null);
+
+  const m = MONTHS[mi];
+  const weeks = buildWeeks(m.id);
+  const monthPrefix = `${YEAR}-${pad2(m.id)}-`;
+  const monthRows = confirmed.filter(c => c.data.startsWith(monthPrefix));
+  const staffNames = [...new Set(monthRows.map(c => c.bagnino))]
+    .sort((a,b) => a.localeCompare(b, "it"));
+  const daysWithShifts = new Set(monthRows.map(c => c.data)).size;
+
+  async function renderCanvas() {
+    await loadScriptOnce("https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js");
+    if (!window.html2canvas) throw new Error("html2canvas non disponibile");
+    if (!calRef.current) throw new Error("Anteprima non pronta");
+    return await window.html2canvas(calRef.current, {
+      backgroundColor: "#f5f5f0",
+      scale: 1.5,        // crispness without huge files
+      useCORS: true,
+      logging: false,
+    });
+  }
+
+  async function downloadJpg() {
+    if (busy) return;
+    setBusy(true); setBusyLabel("Generazione JPG…");
+    try {
+      const canvas = await renderCanvas();
+      const link = document.createElement("a");
+      link.download = `turni-${m.short.toLowerCase()}-${YEAR}.jpg`;
+      link.href = canvas.toDataURL("image/jpeg", 0.92);
+      link.click();
+    } catch (e) {
+      window.alert(`Errore esportazione JPG: ${e.message}`);
+    } finally {
+      setBusy(false); setBusyLabel("");
+    }
+  }
+
+  async function downloadPdf() {
+    if (busy) return;
+    setBusy(true); setBusyLabel("Generazione PDF…");
+    try {
+      await loadScriptOnce("https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js");
+      const canvas = await renderCanvas();
+      const imgData = canvas.toDataURL("image/jpeg", 0.92);
+      const JsPDFCtor = window.jspdf?.jsPDF;
+      if (!JsPDFCtor) throw new Error("jsPDF non disponibile");
+      // A4 landscape, fit canvas with margins
+      const pdf = new JsPDFCtor({ orientation: "landscape", unit: "mm", format: "a4" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 8;
+      const usableW = pageW - margin * 2;
+      const usableH = pageH - margin * 2;
+      const ratio = Math.min(usableW / canvas.width, usableH / canvas.height);
+      const drawW = canvas.width  * ratio;
+      const drawH = canvas.height * ratio;
+      pdf.addImage(imgData, "JPEG", (pageW - drawW)/2, (pageH - drawH)/2, drawW, drawH);
+      pdf.save(`turni-${m.short.toLowerCase()}-${YEAR}.pdf`);
+    } catch (e) {
+      window.alert(`Errore esportazione PDF: ${e.message}`);
+    } finally {
+      setBusy(false); setBusyLabel("");
+    }
+  }
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"#00000070",display:"flex",alignItems:"center",justifyContent:"center",zIndex:120,padding:14}}>
+      <div style={{background:"#fff",borderRadius:14,maxWidth:560,width:"100%",maxHeight:"92vh",overflowY:"auto",boxShadow:"0 8px 32px #00000035",padding:"18px",fontFamily:"'Josefin Sans',sans-serif"}}>
+        <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:14}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:9,color:"#c79500",fontWeight:800,letterSpacing:1.5}}>EXPORT</div>
+            <div style={{fontSize:18,fontWeight:800,color:"#1a1a1a",lineHeight:1.1,marginTop:2}}>📤 Esporta turni confermati</div>
+            <div style={{fontSize:11,color:"#888",marginTop:6,lineHeight:1.55}}>Scarica un'immagine o un PDF del calendario. Vengono inclusi <strong>solo i turni confermati</strong>; le preferenze non confermate non compaiono. Larghezza 1200px, ottimizzato per WhatsApp.</div>
+          </div>
+          <button onClick={onClose} disabled={busy} style={{background:"none",border:"none",fontSize:20,cursor:busy?"wait":"pointer",color:"#888",padding:"0 4px",lineHeight:1}}>✕</button>
+        </div>
+
+        <div style={{...S.tabs,marginBottom:10}}>
+          {MONTHS.map((mo,i)=>(
+            <button key={mo.id} onClick={()=>setMi(i)} disabled={busy} style={{...S.tab,...(i===mi?S.tabOn:{}),opacity:busy?0.5:1}}>{mo.short}</button>
+          ))}
+        </div>
+
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+          <div style={{fontSize:11,color:"#888",fontWeight:700,letterSpacing:0.5}}>ANTEPRIMA</div>
+          <div style={{fontSize:10,color:"#aaa"}}>{daysWithShifts} giorni con turni · {staffNames.length} bagnini</div>
+        </div>
+
+        {/* Preview: horizontal scroll on the rendered 1200px calendar.
+            The same element is the html2canvas capture target. */}
+        <div style={{maxWidth:"100%",overflow:"auto",border:"1px solid #e0e0d8",borderRadius:8,marginBottom:14,background:"#f5f5f0",maxHeight:360}}>
+          <ExportCalendar
+            innerRef={calRef}
+            month={m}
+            weeks={weeks}
+            monthRows={monthRows}
+            staffNames={staffNames}
+          />
+        </div>
+
+        {monthRows.length === 0 && (
+          <div style={{background:"#fef9c3",border:"1px solid #fde68a",borderRadius:8,padding:"10px 12px",marginBottom:12,fontSize:11,color:"#854d0e",lineHeight:1.55}}>
+            ⚠ Nessun turno confermato per {m.name}. Verrà esportato un calendario vuoto — conferma prima i turni dal calendario admin.
+          </div>
+        )}
+
+        {busy && (
+          <div style={{background:"#dbeafe",border:"1px solid #93c5fd",borderRadius:8,padding:"10px 12px",marginBottom:12,fontSize:11,color:"#1d4ed8",fontWeight:700}}>⏳ {busyLabel}</div>
+        )}
+
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={onClose} disabled={busy} style={{flex:1,padding:"11px",background:"#f0f0ea",border:"none",borderRadius:8,fontSize:12,fontWeight:700,color:"#888",cursor:busy?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>Chiudi</button>
+          <button onClick={downloadJpg} disabled={busy} style={{flex:1.4,padding:"11px",background:busy?"#aaa":"#16a34a",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:800,cursor:busy?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>
+            💾 Scarica JPG
+          </button>
+          <button onClick={downloadPdf} disabled={busy} style={{flex:1.4,padding:"11px",background:busy?"#aaa":"#dc2626",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:800,cursor:busy?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>
+            📄 Scarica PDF
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HoursCalendar({ data, confirmed, reload }) {
   const [mi, setMi]                 = useState(0);
   const [editDay, setEditDay]       = useState(null); // {monthId, day, dow, defs}
   const [editAssign, setEditAssign] = useState([]);   // [{bagnino,turno,ore}]
   const [saving, setSaving]         = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const m = MONTHS[mi];
   const weeks = buildWeeks(m.id);
@@ -1133,6 +1365,9 @@ function HoursCalendar({ data, confirmed, reload }) {
           <span style={{color:"#888",fontSize:10}}>Conflitto preferenze</span>
         </div>
         <div style={{marginLeft:"auto",display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
+          <button onClick={()=>setExportOpen(true)} title="Esporta il calendario dei turni confermati in JPG o PDF" style={{padding:"6px 10px",background:"#1a1a1a",color:"#F5C200",border:"none",borderRadius:6,fontSize:10,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.3,whiteSpace:"nowrap"}}>
+            📤 Esporta turni
+          </button>
           <button onClick={cleanupOrphans} title="Cancella da turni_confermati le righe senza preferenza corrispondente in bagnini_preferenze" style={{padding:"6px 10px",background:"#fff",color:"#666",border:"2px dashed #aaa",borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.3,whiteSpace:"nowrap"}}>
             🧹 Ripulisci turni senza preferenza
           </button>
@@ -1141,6 +1376,10 @@ function HoursCalendar({ data, confirmed, reload }) {
           </button>
         </div>
       </div>
+
+      {exportOpen && (
+        <ExportTurniModal confirmed={confirmed} onClose={()=>setExportOpen(false)}/>
+      )}
 
       <div style={{padding:"6px 8px 24px"}}>
         <div style={{...S.calTitle,padding:"4px 10px 8px"}}>{m.name} 2026</div>
