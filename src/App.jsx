@@ -879,7 +879,12 @@ function HoursCalendar({ data, confirmed, reload }) {
 
   const m = MONTHS[mi];
   const weeks = buildWeeks(m.id);
-  const allNames = data.map(r => r.nome);
+  // Distinct, non-empty, alphabetically sorted bagnini names from bagnini_preferenze.
+  // Used to populate every dropdown in the modal so admin can only pick existing
+  // names (no free text → no typos / duplicates).
+  const allNames = [...new Set(
+    data.map(r => r.nome).filter(n => n && n.trim())
+  )].sort((a,b) => a.localeCompare(b, "it"));
 
   function dayConfirmed(monthId, day) {
     return confirmed.filter(r => r.data === dateStrOf(monthId, day));
@@ -1096,7 +1101,7 @@ function HoursCalendar({ data, confirmed, reload }) {
                   return (
                     <div key={i} style={{display:"flex",gap:5,alignItems:"center",marginBottom:6}}>
                       <select value={a.bagnino} onChange={e=>updateAssign(i,{bagnino:e.target.value})} style={{flex:1,padding:"7px 8px",border:"2px solid #e0e0d8",borderRadius:6,fontSize:12,fontFamily:"'Josefin Sans',sans-serif",outline:"none",background:"#fff",color:"#1a1a1a",minWidth:0}}>
-                        <option value="">— Seleziona —</option>
+                        <option value="">— seleziona bagnino —</option>
                         {allNames.map(n => <option key={n} value={n}>{n}</option>)}
                       </select>
                       <input type="number" step="0.5" min="0" value={a.ore} onChange={e=>updateAssign(i,{ore:Number(e.target.value)})} style={{width:54,padding:"7px 6px",border:"2px solid #e0e0d8",borderRadius:6,fontSize:12,fontFamily:"'Josefin Sans',sans-serif",outline:"none",textAlign:"center",color:"#1a1a1a"}}/>
