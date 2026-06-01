@@ -941,8 +941,12 @@ function HoursCalendar({ data, confirmed, reload }) {
   // Number of "extra" overlapping preferences for the day.
   // 2 bagnini sullo stesso turno → 1; 3 → 2; ecc. Sommato su tutti i turni.
   function dayPrefConflicts(monthId, day) {
+    return countOverlaps(dayPrefs(monthId, day));
+  }
+  // Generic overlap counter: how many "extras" share the same `turno` field.
+  function countOverlaps(items) {
     const counts = {};
-    dayPrefs(monthId, day).forEach(p => { counts[p.turno] = (counts[p.turno]||0) + 1; });
+    (items || []).forEach(a => { counts[a.turno] = (counts[a.turno]||0) + 1; });
     let extras = 0;
     Object.values(counts).forEach(n => { if(n > 1) extras += n - 1; });
     return extras;
@@ -1002,27 +1006,44 @@ function HoursCalendar({ data, confirmed, reload }) {
     }
   }
   async function confirmMonthFromPrefs() {
-    if(!window.confirm(`Confermare l'intero mese di ${m.name} dalle preferenze?\nVerranno create le conferme solo per i giorni NON ancora confermati e SOLO dove esiste una preferenza.`)) return;
-    // Per giorno:
-    //   - se è già confermato → skip (preserva le conferme esistenti)
-    //   - altrimenti: itera dayPrefs (che esclude assenti e include solo chi ha
-    //     espresso una preferenza). Se nessuna preferenza esiste per quel
-    //     giorno, dayPrefs ritorna []  →  nessuna riga creata per quel giorno.
+    if(!window.confirm(
+      `Confermare l'intero mese di ${m.name} dalle preferenze?\n\n` +
+      `Verranno inseriti in turni_confermati TUTTI i bagnini che hanno espresso ` +
+      `preferenza per ciascun turno (incluse le sovrapposizioni, da risolvere a mano). ` +
+      `Le righe già esistenti NON vengono duplicate.`
+    )) return;
+
+    // Additive: skip ONLY exact (data, bagnino, turno) tuples that are already
+    // in turni_confermati. Days with partial confirms get topped-up with the
+    // missing preferences. This way "3 bagnini sullo stesso turno" produce 3
+    // distinct rows even if one of them was already confirmed.
+    const monthPrefix = `${YEAR}-${pad2(m.id)}-`;
+    const existing = new Set(
+      confirmed
+        .filter(c => c.data.startsWith(monthPrefix))
+        .map(c => `${c.data}|${c.bagnino}|${c.turno}`)
+    );
+
     const rows = [];
     for(let day=1; day<=m.days; day++){
-      if(dayConfirmed(m.id, day).length) continue;
+      const date = dateStrOf(m.id, day);
       const dow = getDow(m.id, day);
-      dayPrefs(m.id, day).forEach(p => rows.push({
-        data: dateStrOf(m.id, day),
-        bagnino: p.bagnino,
-        turno: p.turno,
-        ore: shiftHours(dow, p.turno),
-      }));
+      dayPrefs(m.id, day).forEach(p => {
+        const key = `${date}|${p.bagnino}|${p.turno}`;
+        if (existing.has(key)) return;
+        rows.push({
+          data: date,
+          bagnino: p.bagnino,
+          turno: p.turno,
+          ore: shiftHours(dow, p.turno),
+        });
+      });
     }
-    if(!rows.length) { window.alert("Nessuna preferenza da confermare in questo mese"); return; }
+    if(!rows.length) { window.alert("Nessuna nuova preferenza da confermare in questo mese."); return; }
     try {
       await tcBulkInsert(rows);
       await reload();
+      window.alert(`✓ Aggiunte ${rows.length} righe a turni_confermati. Le sovrapposizioni sono ora visibili nel calendario in arancione — clicca un giorno per scegliere chi tenere.`);
     } catch(e) {
       window.alert(`Errore: ${e.message}`);
     }
@@ -1134,11 +1155,12 @@ function HoursCalendar({ data, confirmed, reload }) {
             const display = isConf ? conf.map(c=>({bagnino:c.bagnino,turno:c.turno,ore:Number(c.ore)}))
                                    : dayPrefs(m.id, day).map(p=>({bagnino:p.bagnino,turno:p.turno,ore:shiftHours(getDow(m.id,day),p.turno)}));
             const we = isWE(m.id, day);
-            const conflicts = dayPrefConflicts(m.id, day);
+            const conflicts = countOverlaps(display);    // overlaps in what's displayed
+            const needsChoice = isConf && conflicts > 0; // confirmed AND overlapping = admin must resolve
             return (
               <button key={day} onClick={()=>openEdit(day)} style={{
-                background: isConf ? "#dcfce7" : (display.length ? "#fef9c3" : "#fff"),
-                border:`1px solid ${isConf?"#86efac":(display.length?"#fde68a":(we?"#f5e070":"#e8e8e2"))}`,
+                background: needsChoice ? "#fff7ed" : (isConf ? "#dcfce7" : (display.length ? "#fef9c3" : "#fff")),
+                border:`1px solid ${needsChoice?"#fdba74":(isConf?"#86efac":(display.length?"#fde68a":(we?"#f5e070":"#e8e8e2")))}`,
                 borderRadius:8,
                 padding:"6px 4px",
                 display:"flex",flexDirection:"column",gap:3,
@@ -1152,7 +1174,7 @@ function HoursCalendar({ data, confirmed, reload }) {
                   <div style={{fontSize:15,fontWeight:800,lineHeight:1,color:we?"#c79500":"#1a1a1a"}}>{day}</div>
                   <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:2}}>
                     {conflicts > 0 && (
-                      <div title={`${conflicts} preferenz${conflicts===1?"a":"e"} sovrapposte`} style={{background:"#f97316",color:"#fff",fontSize:8,fontWeight:800,padding:"1px 4px",borderRadius:6,lineHeight:1.1,letterSpacing:0.2,whiteSpace:"nowrap"}}>
+                      <div title={needsChoice ? `${conflicts} conferm${conflicts===1?"a":"e"} sullo stesso turno — scegli chi tenere` : `${conflicts} preferenz${conflicts===1?"a":"e"} sovrapposte`} style={{background:"#f97316",color:"#fff",fontSize:8,fontWeight:800,padding:"1px 4px",borderRadius:6,lineHeight:1.1,letterSpacing:0.2,whiteSpace:"nowrap"}}>
                         ⚠️ {conflicts}
                       </div>
                     )}
@@ -1169,6 +1191,11 @@ function HoursCalendar({ data, confirmed, reload }) {
                     </div>
                   ))}
                   {display.length>4 && <div style={{fontSize:7,color:"#aaa"}}>+{display.length-4}…</div>}
+                  {needsChoice && (
+                    <div style={{fontSize:8,color:"#c2410c",fontWeight:800,marginTop:2,letterSpacing:0.2,lineHeight:1.1}}>
+                      ⚠ Devi scegliere
+                    </div>
+                  )}
                 </div>
               </button>
             );
@@ -1191,20 +1218,27 @@ function HoursCalendar({ data, confirmed, reload }) {
 
             {editDay.defs.map(s => {
               const prefs = prefsForShift(editDay.monthId, editDay.day, s.id);
-              const assignedNames = new Set(editAssign.filter(a => a.turno === s.id).map(a => a.bagnino));
+              const assignedInSlot = editAssign.filter(a => a.turno === s.id && a.bagnino && a.bagnino.trim());
+              const assignedNames  = new Set(assignedInSlot.map(a => a.bagnino));
               const available = prefs.filter(p => !assignedNames.has(p.bagnino));
-              const overlap = prefs.length > 1;
+              const prefOverlap     = prefs.length > 1;
+              const assignedOverlap = assignedInSlot.length > 1; // ≥2 bagnini sullo stesso turno → l'admin DEVE risolvere
               return (
-              <div key={s.id} style={{marginBottom:12,padding:"10px 12px",border:`1px solid ${overlap?"#fdba74":"#e8e8e2"}`,borderRadius:10,background:overlap?"#fff7ed":"#fafaf8"}}>
+              <div key={s.id} style={{marginBottom:12,padding:"10px 12px",border:`1px solid ${assignedOverlap?"#f97316":(prefOverlap?"#fdba74":"#e8e8e2")}`,borderRadius:10,background:assignedOverlap?"#fff7ed":(prefOverlap?"#fffbeb":"#fafaf8"),borderWidth:assignedOverlap?2:1}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
                   <div style={{background:s.color,color:s.text,padding:"3px 10px",borderRadius:14,fontSize:11,fontWeight:800,letterSpacing:0.3}}>{s.label}</div>
                   <div style={{color:"#888",fontSize:11,fontWeight:700}}>{shiftHours(editDay.dow,s.id)}h std</div>
-                  {overlap && (
+                  {prefOverlap && (
                     <div style={{background:"#f97316",color:"#fff",fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:10,letterSpacing:0.3,marginLeft:"auto"}}>
                       ⚠️ {prefs.length} in preferenza
                     </div>
                   )}
                 </div>
+                {assignedOverlap && (
+                  <div style={{background:"#f97316",color:"#fff",fontSize:11,fontWeight:800,padding:"7px 10px",borderRadius:8,letterSpacing:0.2,marginBottom:8,lineHeight:1.4}}>
+                    ⚠️ Scegli chi tenere — rimuovi i bagnini in eccesso ({assignedInSlot.length} sullo stesso turno)
+                  </div>
+                )}
                 {editAssign.map((a,i)=>{
                   if (a.turno !== s.id) return null;
                   return (
