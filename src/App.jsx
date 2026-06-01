@@ -44,7 +44,7 @@ async function sbAll() {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
-    const r = await fetch(`${SB_URL}/rest/v1/${TABLE}?select=*&order=aggiornato_il.desc`, { 
+    const r = await fetch(`${SB_URL}/rest/v1/${TABLE}?select=*&order=aggiornato_il.desc`, {
       headers: H,
       signal: controller.signal
     });
@@ -55,6 +55,23 @@ async function sbAll() {
     console.error("sbAll error:", e);
     return [];
   }
+}
+
+// Admin-only patch / delete on bagnini_preferenze (used by the merge tool).
+async function sbDeleteRow(nome) {
+  const r = await fetch(`${SB_URL}/rest/v1/${TABLE}?nome=eq.${encodeURIComponent(nome)}`, {
+    method: "DELETE", headers: H_ADMIN,
+  });
+  if(!r.ok) throw new Error(`sbDeleteRow ${nome}: ${r.status} ${await r.text().catch(()=>"")}`);
+  return await r.json().catch(()=>[]);
+}
+async function sbPatchRaw(nome, payload) {
+  const body = JSON.stringify({ ...payload, aggiornato_il: new Date().toISOString() });
+  const r = await fetch(`${SB_URL}/rest/v1/${TABLE}?nome=eq.${encodeURIComponent(nome)}`, {
+    method: "PATCH", headers: H_ADMIN, body,
+  });
+  if(!r.ok) throw new Error(`sbPatchRaw ${nome}: ${r.status} ${await r.text().catch(()=>"")}`);
+  return await r.json().catch(()=>[]);
 }
 
 // ─── TURNI CONFERMATI API ─────────────────────────────────────────────────
@@ -115,6 +132,15 @@ async function tcBulkInsert(rows) {
     throw new Error(`Bulk insert failed: ${r.status} ${txt}`);
   }
   return await r.json();
+}
+// Bulk-rename: change bagnino on every turni_confermati row matching `from`
+async function tcRenameBagnino(from, to) {
+  const body = JSON.stringify({ bagnino: to, aggiornato_il: new Date().toISOString() });
+  const r = await fetch(`${SB_URL}/rest/v1/${TABLE_TC}?bagnino=eq.${encodeURIComponent(from)}`, {
+    method:"PATCH", headers: H, body,
+  });
+  if(!r.ok) throw new Error(`tcRenameBagnino: ${r.status} ${await r.text().catch(()=>"")}`);
+  return await r.json().catch(()=>[]);
 }
 
 // ─── CHECKLIST API ─────────────────────────────────────────────────────────
@@ -213,6 +239,15 @@ async function ckResetCategory(categoria) {
     if(!ids.length) return;
     await fetch(`${SB_URL}/rest/v1/${TABLE_CK_COMP}?task_id=in.(${ids.join(",")})`, { method:"DELETE", headers: H_ADMIN });
   } catch(e) { console.error("ckResetCategory",e); }
+}
+// Bulk-rename: change bagnino on every checklist_completamenti row matching `from`
+async function ckRenameBagnino(from, to) {
+  const body = JSON.stringify({ bagnino: to });
+  const r = await fetch(`${SB_URL}/rest/v1/${TABLE_CK_COMP}?bagnino=eq.${encodeURIComponent(from)}`, {
+    method:"PATCH", headers: H, body,
+  });
+  if(!r.ok) throw new Error(`ckRenameBagnino: ${r.status} ${await r.text().catch(()=>"")}`);
+  return await r.json().catch(()=>[]);
 }
 
 // Returns the completion that counts as "done" for a task, or null.
@@ -1269,6 +1304,178 @@ function Hours({ data }) {
   );
 }
 
+// ─── MERGE DUPLICATE NAMES ────────────────────────────────────────────────
+// JSONB merge helpers (used by the merge tool).
+// absent: { "6": [1,2,3], "7": [5] } → union of days per month.
+function mergeAbsent(a = {}, b = {}) {
+  const out = { ...(a || {}) };
+  Object.entries(b || {}).forEach(([mo, days]) => {
+    const cur = new Set(out[mo] || []);
+    (days || []).forEach(d => cur.add(d));
+    out[mo] = [...cur].sort((x,y) => x - y);
+  });
+  return out;
+}
+// shifts: { "6": { "1": ["A"], "2": ["B"] } } → master keeps own day pref;
+//         secondary fills in days the master left empty.
+function mergeShifts(a = {}, b = {}) {
+  const out = { ...(a || {}) };
+  Object.entries(b || {}).forEach(([mo, dayMap]) => {
+    const merged = { ...(out[mo] || {}) };
+    Object.entries(dayMap || {}).forEach(([day, sids]) => {
+      const existing = merged[day];
+      if (!existing || existing.length === 0) merged[day] = sids;
+    });
+    out[mo] = merged;
+  });
+  return out;
+}
+
+// Runs the full merge across the 3 tables. Throws on critical failures
+// (bagnini_preferenze patch/delete); the rename steps on turni_confermati
+// and checklist_completamenti are best-effort (errors logged + reported).
+async function mergeBagnini(master, secondary, allData) {
+  if (!master || !secondary) throw new Error("Seleziona entrambi i nomi");
+  if (master === secondary) throw new Error("Master e secondario sono lo stesso nome");
+
+  const masterRow    = allData.find(r => r.nome === master);
+  const secondaryRow = allData.find(r => r.nome === secondary);
+  if (!masterRow)    throw new Error(`Master "${master}" non trovato`);
+  if (!secondaryRow) throw new Error(`Secondario "${secondary}" non trovato`);
+
+  const newAbsent = mergeAbsent(masterRow.absent || {}, secondaryRow.absent || {});
+  const newShifts = mergeShifts(masterRow.shifts || {}, secondaryRow.shifts || {});
+
+  // 1) Update master with merged jsonb
+  await sbPatchRaw(master, { absent: newAbsent, shifts: newShifts });
+  // 2) Delete secondary row
+  await sbDeleteRow(secondary);
+
+  // 3) Rename in turni_confermati (best-effort)
+  let tcCount = 0, tcError = null;
+  try {
+    const rows = await tcRenameBagnino(secondary, master);
+    tcCount = Array.isArray(rows) ? rows.length : 0;
+  } catch (e) { tcError = e.message; console.error(e); }
+
+  // 4) Rename in checklist_completamenti (best-effort)
+  let ckCount = 0, ckError = null;
+  try {
+    const rows = await ckRenameBagnino(secondary, master);
+    ckCount = Array.isArray(rows) ? rows.length : 0;
+  } catch (e) { ckError = e.message; console.error(e); }
+
+  return { tcCount, ckCount, tcError, ckError };
+}
+
+function MergeNamesModal({ data, onClose, onMerged }) {
+  const [master, setMaster]       = useState("");
+  const [secondary, setSecondary] = useState("");
+  const [busy, setBusy]           = useState(false);
+  const [result, setResult]       = useState(null);
+  const [error, setError]         = useState("");
+
+  const names = [...new Set(
+    (data || []).map(r => r.nome).filter(n => n && n.trim())
+  )].sort((a,b) => a.localeCompare(b, "it"));
+
+  async function doMerge() {
+    if (!master || !secondary) { setError("Scegli entrambi i nomi"); return; }
+    if (master === secondary)  { setError("Non puoi unire un nome con sé stesso"); return; }
+    const msg = `Unire "${secondary}" dentro "${master}"?\n\n` +
+                `• Trasferisce preferenze (absent + shifts) di "${secondary}" su "${master}"\n` +
+                `• Cancella il record di "${secondary}" da bagnini_preferenze\n` +
+                `• Rinomina tutte le righe di "${secondary}" in turni_confermati e checklist_completamenti\n\n` +
+                `Azione IRREVERSIBILE.`;
+    if (!window.confirm(msg)) return;
+
+    setBusy(true);
+    setError("");
+    try {
+      const res = await mergeBagnini(master, secondary, data);
+      setResult({ master, secondary, ...res });
+      if (onMerged) await onMerged();
+    } catch (e) {
+      setError(e.message || "Errore durante l'unione");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const selectStyle = {
+    width:"100%",padding:"9px 10px",border:"2px solid #e0e0d8",borderRadius:8,
+    fontSize:13,fontFamily:"'Josefin Sans',sans-serif",outline:"none",
+    background:"#fff",color:"#1a1a1a",
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"#00000070",display:"flex",alignItems:"center",justifyContent:"center",zIndex:120,padding:14}}>
+      <div style={{background:"#fff",borderRadius:14,maxWidth:440,width:"100%",maxHeight:"92vh",overflowY:"auto",boxShadow:"0 8px 32px #00000035",padding:"20px",fontFamily:"'Josefin Sans',sans-serif"}}>
+
+        {result ? (
+          <div style={{textAlign:"center",padding:"4px 2px"}}>
+            <div style={{fontSize:42,marginBottom:8}}>✅</div>
+            <div style={{fontSize:18,fontWeight:800,color:"#16a34a",marginBottom:6}}>Unione completata</div>
+            <div style={{fontSize:13,color:"#1a1a1a",marginBottom:14,lineHeight:1.5}}>
+              <strong>{result.secondary}</strong> unito in <strong>{result.master}</strong>
+            </div>
+            <div style={{background:"#f9f9f6",border:"1px solid #e8e8e2",borderRadius:8,padding:"12px 14px",marginBottom:16,fontSize:11,color:"#555",textAlign:"left",lineHeight:1.85}}>
+              <div>✓ Preferenze (assenze + turni) trasferite</div>
+              <div>✓ Record "{result.secondary}" cancellato da bagnini_preferenze</div>
+              <div>{result.tcError ? "⚠" : "✓"} {result.tcCount} righe rinominate in turni_confermati{result.tcError && <div style={{color:"#b91c1c",fontSize:10,fontStyle:"italic"}}>· {result.tcError}</div>}</div>
+              <div>{result.ckError ? "⚠" : "✓"} {result.ckCount} righe rinominate in checklist_completamenti{result.ckError && <div style={{color:"#b91c1c",fontSize:10,fontStyle:"italic"}}>· {result.ckError}</div>}</div>
+            </div>
+            <button onClick={onClose} style={{padding:"11px 26px",background:"#16a34a",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>Chiudi</button>
+          </div>
+        ) : (
+          <>
+            <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:14}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:9,color:"#c79500",fontWeight:800,letterSpacing:1.5}}>STRUMENTO ADMIN</div>
+                <div style={{fontSize:18,fontWeight:800,color:"#1a1a1a",lineHeight:1.1,marginTop:2}}>🔗 Unisci nomi duplicati</div>
+                <div style={{fontSize:11,color:"#888",marginTop:6,lineHeight:1.55}}>Trasferisce preferenze, turni confermati e completamenti checklist dal nome "secondario" al nome "master". Il secondario viene eliminato.</div>
+              </div>
+              <button onClick={onClose} disabled={busy} style={{background:"none",border:"none",fontSize:20,cursor:busy?"wait":"pointer",color:"#888",padding:"0 4px",lineHeight:1}}>✕</button>
+            </div>
+
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:10,fontWeight:800,color:"#16a34a",letterSpacing:1,marginBottom:5}}>NOME MASTER (da TENERE)</div>
+              <select value={master} onChange={e=>{ setMaster(e.target.value); setError(""); }} style={selectStyle}>
+                <option value="">— seleziona bagnino —</option>
+                {names.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:10,fontWeight:800,color:"#e63946",letterSpacing:1,marginBottom:5}}>NOME SECONDARIO (da UNIRE E CANCELLARE)</div>
+              <select value={secondary} onChange={e=>{ setSecondary(e.target.value); setError(""); }} style={selectStyle}>
+                <option value="">— seleziona bagnino —</option>
+                {names.filter(n => n !== master).map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+
+            {master && secondary && master !== secondary && (
+              <div style={{background:"#fef9c3",border:"1px solid #fde68a",borderRadius:8,padding:"10px 12px",marginBottom:12,fontSize:11,color:"#854d0e",lineHeight:1.55}}>
+                ⚠ <strong>{secondary}</strong> verrà unito dentro <strong>{master}</strong> e poi eliminato.<br/>
+                In caso di conflitto sulla stessa giornata, vincono le preferenze di <strong>{master}</strong>.
+              </div>
+            )}
+            {error && (
+              <div style={{background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:8,padding:"10px 12px",marginBottom:12,fontSize:11,color:"#b91c1c",lineHeight:1.55}}>{error}</div>
+            )}
+
+            <div style={{display:"flex",gap:8,marginTop:6}}>
+              <button onClick={onClose} disabled={busy} style={{flex:1,padding:"11px",background:"#f0f0ea",border:"none",borderRadius:8,fontSize:12,fontWeight:700,color:"#888",cursor:busy?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>Annulla</button>
+              <button onClick={doMerge} disabled={busy || !master || !secondary || master===secondary} style={{flex:1.6,padding:"11px",background:(busy||!master||!secondary||master===secondary)?"#aaa":"#16a34a",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:800,cursor:(busy||!master||!secondary||master===secondary)?"not-allowed":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>
+                {busy ? "Unione in corso…" : "✓ Conferma unione"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── ADMIN ────────────────────────────────────────────────────────────────
 function Admin({ onBack }) {
   const [mi, setMi]       = useState(0);
@@ -1278,12 +1485,18 @@ function Admin({ onBack }) {
   const [copied, setCopied]   = useState(false);
   const [view, setView]       = useState("calendar");
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [mergeOpen, setMergeOpen] = useState(false);
+
+  async function reloadData() {
+    const d = await sbAll();
+    if (Array.isArray(d)) setData(d);
+  }
 
   useEffect(()=>{
-    sbAll().then(d=>{ 
-      if(Array.isArray(d)) { setData(d); } 
+    sbAll().then(d=>{
+      if(Array.isArray(d)) { setData(d); }
       else { setLoadError(true); }
-      setLoading(false); 
+      setLoading(false);
     }).catch(()=>{ setLoadError(true); setLoading(false); });
   },[]);
 
@@ -1396,7 +1609,10 @@ function Admin({ onBack }) {
 
       {/* Staff chips */}
       {view!=="checklist" && view!=="hours" && (
-      <div style={{padding:"10px 14px",display:"flex",gap:6,flexWrap:"wrap"}}>
+      <div style={{padding:"10px 14px",display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+        <button onClick={()=>setMergeOpen(true)} title="Unisci due nomi duplicati in uno" style={{background:"#fff",border:"2px dashed #aaa",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontWeight:700,color:"#666",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
+          🔗 Unisci duplicati
+        </button>
         {data.map(r=>{
           const tot = MONTHS.reduce((a,mo)=>{
             const wk = buildWeeks(mo.id).flat().filter(d=>d&&!(r.absent?.[mo.id]||[]).includes(d));
@@ -1415,6 +1631,15 @@ function Admin({ onBack }) {
         })}
         {data.length===0 && <div style={{color:"#ccc",fontSize:12}}>Nessun dato ancora</div>}
       </div>
+      )}
+
+      {/* Merge duplicate names modal */}
+      {mergeOpen && (
+        <MergeNamesModal
+          data={data}
+          onClose={()=>setMergeOpen(false)}
+          onMerged={reloadData}
+        />
       )}
 
       {/* Confirm delete modal */}
