@@ -950,6 +950,15 @@ function HoursCalendar({ data, confirmed, reload }) {
   function prefsForShift(monthId, day, sid) {
     return dayPrefs(monthId, day).filter(p => p.turno === sid);
   }
+  // True if `nome` has expressed a preference for that exact turno on that day
+  // (and is not absent on that day) in bagnini_preferenze.
+  function bagninoHasPref(nome, monthId, day, turno) {
+    const row = data.find(r => r.nome === nome);
+    if (!row) return false;
+    if ((row.absent?.[monthId] || []).includes(day)) return false;
+    const sids = row.shifts?.[monthId]?.[day] || [];
+    return sids.includes(turno);
+  }
 
   function openEdit(day) {
     const monthId = m.id;
@@ -993,7 +1002,12 @@ function HoursCalendar({ data, confirmed, reload }) {
     }
   }
   async function confirmMonthFromPrefs() {
-    if(!window.confirm(`Confermare l'intero mese di ${m.name} dalle preferenze?\nVerranno create le conferme solo per i giorni NON ancora confermati.`)) return;
+    if(!window.confirm(`Confermare l'intero mese di ${m.name} dalle preferenze?\nVerranno create le conferme solo per i giorni NON ancora confermati e SOLO dove esiste una preferenza.`)) return;
+    // Per giorno:
+    //   - se è già confermato → skip (preserva le conferme esistenti)
+    //   - altrimenti: itera dayPrefs (che esclude assenti e include solo chi ha
+    //     espresso una preferenza). Se nessuna preferenza esiste per quel
+    //     giorno, dayPrefs ritorna []  →  nessuna riga creata per quel giorno.
     const rows = [];
     for(let day=1; day<=m.days; day++){
       if(dayConfirmed(m.id, day).length) continue;
@@ -1005,12 +1019,47 @@ function HoursCalendar({ data, confirmed, reload }) {
         ore: shiftHours(dow, p.turno),
       }));
     }
-    if(!rows.length) { window.alert("Nessun giorno da confermare"); return; }
+    if(!rows.length) { window.alert("Nessuna preferenza da confermare in questo mese"); return; }
     try {
       await tcBulkInsert(rows);
       await reload();
     } catch(e) {
       window.alert(`Errore: ${e.message}`);
+    }
+  }
+  // Cancella da turni_confermati tutte le righe il cui (bagnino, data, turno)
+  // non corrisponde a una preferenza in bagnini_preferenze.
+  async function cleanupOrphans() {
+    const orphans = confirmed.filter(r => {
+      const [, mm, dd] = r.data.split("-").map(Number);
+      return !bagninoHasPref(r.bagnino, mm, dd, r.turno);
+    });
+    if (orphans.length === 0) {
+      window.alert("✓ Nessuna riga da ripulire — tutti i turni confermati hanno una preferenza corrispondente.");
+      return;
+    }
+    if (!window.confirm(
+      `Verranno eliminate ${orphans.length} righe da turni_confermati ` +
+      `senza preferenza corrispondente in bagnini_preferenze.\n\n` +
+      `Azione IRREVERSIBILE. Continuare?`
+    )) return;
+    const ids = orphans.map(r => r.id);
+    const CHUNK = 80;
+    let deleted = 0;
+    try {
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const chunk = ids.slice(i, i + CHUNK);
+        const r = await fetch(`${SB_URL}/rest/v1/${TABLE_TC}?id=in.(${chunk.join(",")})`, {
+          method: "DELETE", headers: H,
+        });
+        if (!r.ok) throw new Error(`${r.status} ${await r.text().catch(()=>"")}`);
+        deleted += chunk.length;
+      }
+      await reload();
+      window.alert(`✓ Pulizia completata: ${deleted} righe eliminate da turni_confermati.`);
+    } catch (e) {
+      await reload();
+      window.alert(`Pulizia interrotta dopo ${deleted} righe.\nErrore: ${e.message}`);
     }
   }
 
@@ -1023,6 +1072,20 @@ function HoursCalendar({ data, confirmed, reload }) {
   }
   function removeAssign(idx) {
     setEditAssign(editAssign.filter((_,i)=>i!==idx));
+  }
+  // Wrapped onChange that warns when picking a bagnino without preference
+  // for the row's turno on the current day.
+  function pickAssignBagnino(idx, newName) {
+    if (!editDay) return;
+    const a = editAssign[idx];
+    if (newName && !bagninoHasPref(newName, editDay.monthId, editDay.day, a.turno)) {
+      const ok = window.confirm(
+        `⚠️ ${newName} non ha espresso preferenza per questo turno — sei sicuro?\n\n` +
+        `(OK = Aggiungi comunque · Annulla = Non aggiungere)`
+      );
+      if (!ok) return;
+    }
+    updateAssign(idx, { bagnino: newName });
   }
 
   const dowNames = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"];
@@ -1048,9 +1111,14 @@ function HoursCalendar({ data, confirmed, reload }) {
           <span style={{background:"#f97316",color:"#fff",fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:5,lineHeight:1.2}}>⚠️</span>
           <span style={{color:"#888",fontSize:10}}>Conflitto preferenze</span>
         </div>
-        <button onClick={confirmMonthFromPrefs} style={{marginLeft:"auto",padding:"6px 10px",background:"#16a34a",color:"#fff",border:"none",borderRadius:6,fontSize:10,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.3}}>
-          ✓ Conferma mese da preferenze
-        </button>
+        <div style={{marginLeft:"auto",display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
+          <button onClick={cleanupOrphans} title="Cancella da turni_confermati le righe senza preferenza corrispondente in bagnini_preferenze" style={{padding:"6px 10px",background:"#fff",color:"#666",border:"2px dashed #aaa",borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.3,whiteSpace:"nowrap"}}>
+            🧹 Ripulisci turni senza preferenza
+          </button>
+          <button onClick={confirmMonthFromPrefs} style={{padding:"6px 10px",background:"#16a34a",color:"#fff",border:"none",borderRadius:6,fontSize:10,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.3,whiteSpace:"nowrap"}}>
+            ✓ Conferma mese da preferenze
+          </button>
+        </div>
       </div>
 
       <div style={{padding:"6px 8px 24px"}}>
@@ -1141,7 +1209,7 @@ function HoursCalendar({ data, confirmed, reload }) {
                   if (a.turno !== s.id) return null;
                   return (
                     <div key={i} style={{display:"flex",gap:5,alignItems:"center",marginBottom:6}}>
-                      <select value={a.bagnino} onChange={e=>updateAssign(i,{bagnino:e.target.value})} style={{flex:1,padding:"7px 8px",border:"2px solid #e0e0d8",borderRadius:6,fontSize:12,fontFamily:"'Josefin Sans',sans-serif",outline:"none",background:"#fff",color:"#1a1a1a",minWidth:0}}>
+                      <select value={a.bagnino} onChange={e=>pickAssignBagnino(i, e.target.value)} style={{flex:1,padding:"7px 8px",border:"2px solid #e0e0d8",borderRadius:6,fontSize:12,fontFamily:"'Josefin Sans',sans-serif",outline:"none",background:"#fff",color:"#1a1a1a",minWidth:0}}>
                         <option value="">— seleziona bagnino —</option>
                         {allNames.map(n => <option key={n} value={n}>{n}</option>)}
                       </select>
