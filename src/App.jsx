@@ -335,7 +335,7 @@ function buildWeeks(month) {
 }
 
 // ─── STEP 1 — ASSENZE ─────────────────────────────────────────────────────
-function StepAbsent({ name, absent, setAbsent, onNext }) {
+function StepAbsent({ name, absent, setAbsent, onNext, bagniniNames, onNameChange }) {
   const [mi, setMi] = useState(0);
   const m = MONTHS[mi];
   const weeks = buildWeeks(m.id);
@@ -351,9 +351,12 @@ function StepAbsent({ name, absent, setAbsent, onNext }) {
   return (
     <div style={S.page}>
       <div style={S.bar}>
-        <div style={{flex:1}}>
+        <div style={{flex:1,minWidth:0}}>
           <div style={S.barLabel}>Turni Estivi 2026</div>
-          <div style={S.barName}>{name}</div>
+          <select value={name} onChange={e=>onNameChange(e.target.value)} style={{color:"#1a1a1a",fontSize:17,fontWeight:800,fontFamily:"'Josefin Sans',sans-serif",background:"#fff",border:"none",borderBottom:"2px dashed #F5C200",outline:"none",cursor:"pointer",padding:"2px 0",lineHeight:1.2,maxWidth:"100%"}}>
+            {!(bagniniNames||[]).includes(name) && name && <option value={name}>{name} (rimosso)</option>}
+            {(bagniniNames||[]).map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
         </div>
         <div style={S.pill}>1 / 2</div>
       </div>
@@ -411,7 +414,7 @@ function StepAbsent({ name, absent, setAbsent, onNext }) {
 }
 
 // ─── STEP 2 — TURNI ───────────────────────────────────────────────────────
-function StepShifts({ name, absent, shifts, setShifts, onBack, onSubmit, saving }) {
+function StepShifts({ name, absent, shifts, setShifts, onBack, onSubmit, saving, bagniniNames, onNameChange }) {
   const [mi, setMi] = useState(0);
   const m = MONTHS[mi];
   const weeks = buildWeeks(m.id);
@@ -431,9 +434,12 @@ function StepShifts({ name, absent, shifts, setShifts, onBack, onSubmit, saving 
     <div style={S.page}>
       <div style={S.bar}>
         <button onClick={onBack} style={S.back}>←</button>
-        <div style={{flex:1}}>
+        <div style={{flex:1,minWidth:0}}>
           <div style={S.barLabel}>Turni Estivi 2026</div>
-          <div style={S.barName}>{name}</div>
+          <select value={name} onChange={e=>onNameChange(e.target.value)} style={{color:"#1a1a1a",fontSize:17,fontWeight:800,fontFamily:"'Josefin Sans',sans-serif",background:"#fff",border:"none",borderBottom:"2px dashed #F5C200",outline:"none",cursor:"pointer",padding:"2px 0",lineHeight:1.2,maxWidth:"100%"}}>
+            {!(bagniniNames||[]).includes(name) && name && <option value={name}>{name} (rimosso)</option>}
+            {(bagniniNames||[]).map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
         </div>
         <div style={S.pill}>2 / 2</div>
       </div>
@@ -1432,24 +1438,24 @@ function MergeNamesModal({ data, onClose, onMerged }) {
             <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:14}}>
               <div style={{flex:1}}>
                 <div style={{fontSize:9,color:"#c79500",fontWeight:800,letterSpacing:1.5}}>STRUMENTO ADMIN</div>
-                <div style={{fontSize:18,fontWeight:800,color:"#1a1a1a",lineHeight:1.1,marginTop:2}}>🔗 Unisci nomi duplicati</div>
-                <div style={{fontSize:11,color:"#888",marginTop:6,lineHeight:1.55}}>Trasferisce preferenze, turni confermati e completamenti checklist dal nome "secondario" al nome "master". Il secondario viene eliminato.</div>
+                <div style={{fontSize:18,fontWeight:800,color:"#1a1a1a",lineHeight:1.1,marginTop:2}}>🔀 Unisci nomi duplicati</div>
+                <div style={{fontSize:11,color:"#888",marginTop:6,lineHeight:1.55}}>Trasferisce preferenze, turni confermati e completamenti checklist dal nome da eliminare al nome master. Il primo viene poi cancellato.</div>
               </div>
               <button onClick={onClose} disabled={busy} style={{background:"none",border:"none",fontSize:20,cursor:busy?"wait":"pointer",color:"#888",padding:"0 4px",lineHeight:1}}>✕</button>
             </div>
 
             <div style={{marginBottom:10}}>
-              <div style={{fontSize:10,fontWeight:800,color:"#16a34a",letterSpacing:1,marginBottom:5}}>NOME MASTER (da TENERE)</div>
-              <select value={master} onChange={e=>{ setMaster(e.target.value); setError(""); }} style={selectStyle}>
-                <option value="">— seleziona bagnino —</option>
-                {names.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </div>
-            <div style={{marginBottom:12}}>
-              <div style={{fontSize:10,fontWeight:800,color:"#e63946",letterSpacing:1,marginBottom:5}}>NOME SECONDARIO (da UNIRE E CANCELLARE)</div>
+              <div style={{fontSize:10,fontWeight:800,color:"#e63946",letterSpacing:1,marginBottom:5}}>NOME DA ELIMINARE</div>
               <select value={secondary} onChange={e=>{ setSecondary(e.target.value); setError(""); }} style={selectStyle}>
                 <option value="">— seleziona bagnino —</option>
                 {names.filter(n => n !== master).map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:10,fontWeight:800,color:"#16a34a",letterSpacing:1,marginBottom:5}}>NOME MASTER DA TENERE</div>
+              <select value={master} onChange={e=>{ setMaster(e.target.value); setError(""); }} style={selectStyle}>
+                <option value="">— seleziona bagnino —</option>
+                {names.filter(n => n !== secondary).map(n => <option key={n} value={n}>{n}</option>)}
               </select>
             </div>
 
@@ -1506,6 +1512,25 @@ function Admin({ onBack }) {
     });
     setData(data.filter(r=>r.nome!==nome));
     setConfirmDelete(null);
+  }
+
+  async function handleAddBagnino() {
+    const raw = window.prompt("Nome e cognome del nuovo bagnino:");
+    if (raw == null) return;
+    const nome = raw.trim();
+    if (!nome) return;
+    if (data.some(r => r.nome.toLowerCase() === nome.toLowerCase())) {
+      window.alert(`"${nome}" esiste già`);
+      return;
+    }
+    try {
+      const body = JSON.stringify({ nome, absent: {}, shifts: {}, aggiornato_il: new Date().toISOString() });
+      const r = await fetch(`${SB_URL}/rest/v1/${TABLE}`, { method:"POST", headers: H_ADMIN, body });
+      if(!r.ok) throw new Error(`${r.status} ${await r.text().catch(()=>"")}`);
+      await reloadData();
+    } catch (e) {
+      window.alert(`Errore creazione bagnino: ${e.message}`);
+    }
   }
 
   const m = MONTHS[mi];
@@ -1610,8 +1635,11 @@ function Admin({ onBack }) {
       {/* Staff chips */}
       {view!=="checklist" && view!=="hours" && (
       <div style={{padding:"10px 14px",display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+        <button onClick={handleAddBagnino} title="Crea un nuovo profilo bagnino vuoto" style={{background:"#16a34a",border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:11,fontWeight:800,color:"#fff",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",letterSpacing:0.3}}>
+          + Nuovo bagnino
+        </button>
         <button onClick={()=>setMergeOpen(true)} title="Unisci due nomi duplicati in uno" style={{background:"#fff",border:"2px dashed #aaa",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontWeight:700,color:"#666",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
-          🔗 Unisci duplicati
+          🔀 Unisci duplicati
         </button>
         {data.map(r=>{
           const tot = MONTHS.reduce((a,mo)=>{
@@ -1839,15 +1867,52 @@ export default function App() {
   const [saving,setSaving]   = useState(false);
   const [adminPw,setAdminPw] = useState("");
   const [adminErr,setAdminErr]= useState("");
+  const [bagniniNames, setBagniniNames]       = useState([]);
+  const [bagniniLoading, setBagniniLoading]   = useState(true);
+  const [bagniniLoadError, setBagniniLoadError] = useState(false);
 
-  async function handleStart() {
-    const n = name.trim();
-    if(!n) return setNameErr("Inserisci il tuo nome e cognome");
+  async function loadBagniniNames() {
+    setBagniniLoading(true);
+    try {
+      const d = await sbAll();
+      if(Array.isArray(d)) {
+        const names = [...new Set(d.map(r => r.nome).filter(n => n && n.trim()))]
+          .sort((a,b) => a.localeCompare(b, "it"));
+        setBagniniNames(names);
+        setBagniniLoadError(false);
+      } else {
+        setBagniniLoadError(true);
+      }
+    } catch (e) {
+      console.error("loadBagniniNames", e);
+      setBagniniLoadError(true);
+    } finally {
+      setBagniniLoading(false);
+    }
+  }
+
+  useEffect(() => { loadBagniniNames(); }, []);
+  // Refresh names whenever we land on the home/hub (admin may have just added/merged)
+  useEffect(() => {
+    if (screen === "home" || screen === "hub") loadBagniniNames();
+  }, [screen]);
+
+  // Switching name reloads that bagnino's saved preferences from Supabase.
+  async function handleSelectName(newName) {
     setNameErr("");
-    // Load existing data from Supabase
-    const existing = await sbGet(n);
-    if(existing) { setAbsent(existing.absent||{}); setShifts(existing.shifts||{}); }
+    if (!newName) {
+      setName(""); setAbsent({}); setShifts({});
+      return;
+    }
+    setName(newName);
+    const existing = await sbGet(newName);
+    if (existing) { setAbsent(existing.absent || {}); setShifts(existing.shifts || {}); }
     else          { setAbsent({}); setShifts({}); }
+  }
+
+  function handleStart() {
+    if(!name) { setNameErr("Seleziona il tuo nome dall'elenco"); return; }
+    setNameErr("");
     setScreen("hub");
   }
 
@@ -1865,10 +1930,10 @@ export default function App() {
 
   if(screen==="hub")       return <Hub name={name.trim()} onPrefs={()=>setScreen("step1")} onCheck={()=>setScreen("checklist")} onBack={()=>setScreen("home")}/>;
   if(screen==="checklist") return <Checklist name={name.trim()} onBack={()=>setScreen("hub")}/>;
-  if(screen==="step1")     return <StepAbsent name={name.trim()} absent={absent} setAbsent={setAbsent} onNext={()=>setScreen("step2")}/>;
-  if(screen==="step2")     return <StepShifts name={name.trim()} absent={absent} shifts={shifts} setShifts={setShifts} onBack={()=>setScreen("step1")} onSubmit={handleSubmit} saving={saving}/>;
+  if(screen==="step1")     return <StepAbsent name={name.trim()} absent={absent} setAbsent={setAbsent} onNext={()=>setScreen("step2")} bagniniNames={bagniniNames} onNameChange={handleSelectName}/>;
+  if(screen==="step2")     return <StepShifts name={name.trim()} absent={absent} shifts={shifts} setShifts={setShifts} onBack={()=>setScreen("step1")} onSubmit={handleSubmit} saving={saving} bagniniNames={bagniniNames} onNameChange={handleSelectName}/>;
   if(screen==="done")      return <Done name={name.trim()} onEdit={()=>setScreen("hub")}/>;
-  if(screen==="admin")     return <Admin onBack={()=>setScreen("home")}/>;
+  if(screen==="admin")     return <Admin onBack={()=>{ loadBagniniNames(); setScreen("home"); }}/>;
 
   if(screen==="adminLogin") return (
     <div style={{minHeight:"100vh",background:"#f5f5f0",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Josefin Sans',sans-serif",padding:24}}>
@@ -1893,18 +1958,30 @@ export default function App() {
       </div>
       <div style={{padding:"32px 22px",flex:1,display:"flex",flexDirection:"column",gap:18}}>
         <div>
-          <div style={{color:"#888",fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Il tuo nome</div>
-          <input
-            placeholder="Es. Marco Rossi"
-            value={name}
-            onChange={e=>{setName(e.target.value);setNameErr("");}}
-            onKeyDown={e=>e.key==="Enter"&&handleStart()}
-            style={{width:"100%",padding:"14px 16px",borderRadius:10,border:`2px solid ${nameErr?"#e63946":"#e0e0d8"}`,background:"#fff",color:"#1a1a1a",fontSize:16,fontFamily:"'Josefin Sans',sans-serif",outline:"none",boxSizing:"border-box",boxShadow:"0 1px 4px #0000000a"}}
-          />
-          {nameErr && <div style={{color:"#e63946",fontSize:12,marginTop:5}}>{nameErr}</div>}
-          <div style={{color:"#bbb",fontSize:11,marginTop:6}}>Se hai già inserito le preferenze, il tuo nome le ricaricherà automaticamente.</div>
+          <div style={{color:"#888",fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Seleziona il tuo nome</div>
+          {bagniniLoading ? (
+            <div style={{color:"#aaa",fontSize:13,padding:"14px 16px",border:"2px solid #e0e0d8",borderRadius:10,background:"#fff"}}>Caricamento…</div>
+          ) : (bagniniLoadError || bagniniNames.length === 0) ? (
+            <div style={{color:"#b91c1c",fontSize:13,padding:"14px 16px",border:"2px solid #fca5a5",borderRadius:10,background:"#fef2f2",lineHeight:1.55}}>
+              ⚠ Nessun bagnino registrato — contatta l'admin per creare il tuo profilo.
+            </div>
+          ) : (
+            <>
+              <select
+                value={name}
+                onChange={e => handleSelectName(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleStart()}
+                style={{width:"100%",padding:"14px 16px",borderRadius:10,border:`2px solid ${nameErr?"#e63946":"#e0e0d8"}`,background:"#fff",color:name?"#1a1a1a":"#888",fontSize:16,fontFamily:"'Josefin Sans',sans-serif",outline:"none",boxSizing:"border-box",boxShadow:"0 1px 4px #0000000a",cursor:"pointer",fontWeight:name?700:400}}
+              >
+                <option value="">— Chi sei? —</option>
+                {bagniniNames.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              {nameErr && <div style={{color:"#e63946",fontSize:12,marginTop:5}}>{nameErr}</div>}
+              <div style={{color:"#bbb",fontSize:11,marginTop:6}}>Solo i nomi registrati dall'admin sono selezionabili.</div>
+            </>
+          )}
         </div>
-        <button onClick={handleStart} style={{...S.btnY,fontSize:16}}>Inizia →</button>
+        <button onClick={handleStart} disabled={!name || bagniniLoading} style={{...S.btnY,fontSize:16,opacity:(!name||bagniniLoading)?0.5:1,cursor:(!name||bagniniLoading)?"not-allowed":"pointer"}}>Inizia →</button>
         <div style={{borderTop:"1px solid #e0e0d8",paddingTop:22}}>
           <button onClick={()=>setScreen("adminLogin")} style={{width:"100%",padding:12,background:"transparent",color:"#1a1a1a",border:"2px solid #e0e0d8",borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>
             🔒 Area Admin
