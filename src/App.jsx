@@ -143,6 +143,71 @@ async function tcRenameBagnino(from, to) {
   return await r.json().catch(()=>[]);
 }
 
+// ─── RICHIESTE ORE API ────────────────────────────────────────────────────
+const TABLE_RO = "richieste_ore";
+
+async function roAll() {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${TABLE_RO}?select=*&order=creata_il.desc`, { headers: H });
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch(e) { console.error("roAll",e); return []; }
+}
+async function roForBagnino(bagnino) {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${TABLE_RO}?bagnino=eq.${encodeURIComponent(bagnino)}&select=*&order=creata_il.desc`, { headers: H });
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch(e) { console.error("roForBagnino",e); return []; }
+}
+async function roPendingCount() {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${TABLE_RO}?stato=eq.pending&select=id`, { headers: H });
+    if(!r.ok) return 0;
+    const d = await r.json();
+    return Array.isArray(d) ? d.length : 0;
+  } catch(e) { console.error("roPendingCount",e); return 0; }
+}
+async function roCreate({ bagnino, data, turno, ore_confermate, ore_richieste, motivo }) {
+  const body = JSON.stringify({
+    bagnino, data, turno,
+    ore_confermate, ore_richieste, motivo,
+    stato: "pending",
+  });
+  const r = await fetch(`${SB_URL}/rest/v1/${TABLE_RO}`, { method:"POST", headers: H, body });
+  if(!r.ok) throw new Error(`POST richieste_ore: ${r.status} ${await r.text().catch(()=>"")}`);
+  return (await r.json())?.[0];
+}
+async function roReject(id, nota) {
+  const body = JSON.stringify({
+    stato: "rifiutata",
+    gestita_il: new Date().toISOString(),
+    nota_admin: nota && nota.trim() ? nota.trim() : null,
+  });
+  const r = await fetch(`${SB_URL}/rest/v1/${TABLE_RO}?id=eq.${id}`, { method:"PATCH", headers: H, body });
+  if(!r.ok) throw new Error(`PATCH richieste_ore: ${r.status} ${await r.text().catch(()=>"")}`);
+  return await r.json();
+}
+// Approve: bump ore on the matching turni_confermati row(s), then flag request as approved.
+async function roApprove(req) {
+  const tcBody = JSON.stringify({
+    ore: req.ore_richieste,
+    aggiornato_il: new Date().toISOString(),
+  });
+  const tcResp = await fetch(
+    `${SB_URL}/rest/v1/${TABLE_TC}?bagnino=eq.${encodeURIComponent(req.bagnino)}&data=eq.${req.data}&turno=eq.${encodeURIComponent(req.turno)}`,
+    { method:"PATCH", headers: H, body: tcBody }
+  );
+  if(!tcResp.ok) throw new Error(`PATCH turni_confermati: ${tcResp.status} ${await tcResp.text().catch(()=>"")}`);
+  const roBody = JSON.stringify({
+    stato: "approvata",
+    gestita_il: new Date().toISOString(),
+  });
+  const r = await fetch(`${SB_URL}/rest/v1/${TABLE_RO}?id=eq.${req.id}`, { method:"PATCH", headers: H, body: roBody });
+  if(!r.ok) throw new Error(`PATCH richieste_ore: ${r.status} ${await r.text().catch(()=>"")}`);
+  return await r.json();
+}
+
 // ─── CHECKLIST API ─────────────────────────────────────────────────────────
 const TABLE_CK_TASKS = "checklist_tasks";
 const TABLE_CK_COMP  = "checklist_completamenti";
@@ -539,7 +604,7 @@ function Done({ name, onEdit }) {
 }
 
 // ─── HUB (dopo login) ─────────────────────────────────────────────────────
-function Hub({ name, onPrefs, onCheck, onBack }) {
+function Hub({ name, onPrefs, onCheck, onMyShifts, onBack }) {
   return (
     <div style={S.page}>
       <div style={S.bar}>
@@ -551,10 +616,18 @@ function Hub({ name, onPrefs, onCheck, onBack }) {
       </div>
       <div style={{padding:"24px 22px",display:"flex",flexDirection:"column",gap:14,flex:1}}>
         <button onClick={onPrefs} style={{padding:"22px 18px",background:"#F5C200",color:"#1a1a1a",border:"none",borderRadius:14,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:14,textAlign:"left",boxShadow:"0 2px 8px #0000000d"}}>
-          <span style={{fontSize:34}}>📅</span>
+          <span style={{fontSize:34}}>📝</span>
           <div style={{flex:1}}>
             <div style={{fontSize:16,fontWeight:800}}>Preferenze Turni</div>
             <div style={{fontSize:11,fontWeight:600,opacity:0.7,marginTop:2}}>Assenze e turni preferiti per l'estate 2026</div>
+          </div>
+          <span style={{fontSize:22}}>→</span>
+        </button>
+        <button onClick={onMyShifts} style={{padding:"22px 18px",background:"#2563eb",color:"#fff",border:"none",borderRadius:14,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:14,textAlign:"left",boxShadow:"0 2px 8px #0000000d"}}>
+          <span style={{fontSize:34}}>📅</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:16,fontWeight:800}}>I miei turni</div>
+            <div style={{fontSize:11,fontWeight:600,opacity:0.85,marginTop:2}}>Turni confermati, ore lavorate e richieste</div>
           </div>
           <span style={{fontSize:22}}>→</span>
         </button>
@@ -567,6 +640,208 @@ function Hub({ name, onPrefs, onCheck, onBack }) {
           <span style={{fontSize:22}}>→</span>
         </button>
       </div>
+    </div>
+  );
+}
+
+// ─── I MIEI TURNI (bagnino) ───────────────────────────────────────────────
+function EditHoursModal({ shift, onClose, onSubmitted }) {
+  const [ore, setOre]       = useState(String(Number(shift.ore)));
+  const [motivo, setMotivo] = useState("");
+  const [busy, setBusy]     = useState(false);
+  const [error, setError]   = useState("");
+
+  const [, mm, dd] = shift.data.split("-").map(Number);
+  const dow = getDow(mm, dd);
+  const monthName = MONTHS.find(x => x.id === mm)?.name || "";
+  const dowNames = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"];
+
+  async function submit() {
+    const num = parseFloat(ore);
+    if (isNaN(num) || num <= 0) { setError("Inserisci un numero di ore valido"); return; }
+    if (!motivo.trim()) { setError("Il motivo è obbligatorio"); return; }
+    setBusy(true); setError("");
+    try {
+      await roCreate({
+        bagnino:        shift.bagnino,
+        data:           shift.data,
+        turno:          shift.turno,
+        ore_confermate: Number(shift.ore),
+        ore_richieste:  num,
+        motivo:         motivo.trim(),
+      });
+      await onSubmitted();
+    } catch (e) {
+      setError(e.message || "Errore invio richiesta");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"#00000070",display:"flex",alignItems:"center",justifyContent:"center",zIndex:120,padding:14}}>
+      <div style={{background:"#fff",borderRadius:14,maxWidth:380,width:"100%",maxHeight:"92vh",overflowY:"auto",boxShadow:"0 8px 32px #00000035",padding:"20px",fontFamily:"'Josefin Sans',sans-serif"}}>
+        <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:14}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:9,color:"#c79500",fontWeight:800,letterSpacing:1.5}}>RICHIESTA MODIFICA ORE</div>
+            <div style={{fontSize:18,fontWeight:800,color:"#1a1a1a",lineHeight:1.1,marginTop:2}}>✏️ {dowNames[dow]} {dd} {monthName}</div>
+            <div style={{fontSize:11,color:"#888",marginTop:6,lineHeight:1.55}}>Turno {shiftLabel(dow, shift.turno)} · ore confermate: <strong>{Number(shift.ore)}h</strong></div>
+          </div>
+          <button onClick={onClose} disabled={busy} style={{background:"none",border:"none",fontSize:20,cursor:busy?"wait":"pointer",color:"#888",padding:"0 4px",lineHeight:1}}>✕</button>
+        </div>
+
+        <div style={{marginBottom:10}}>
+          <div style={{fontSize:10,fontWeight:800,color:"#888",letterSpacing:1,marginBottom:5}}>ORE EFFETTIVE LAVORATE</div>
+          <input type="number" step="0.5" min="0" max="24" value={ore} onChange={e=>{ setOre(e.target.value); setError(""); }} style={{width:"100%",padding:"10px 12px",border:"2px solid #e0e0d8",borderRadius:8,fontSize:16,fontFamily:"'Josefin Sans',sans-serif",outline:"none",color:"#1a1a1a",fontWeight:800,boxSizing:"border-box"}}/>
+        </div>
+        <div style={{marginBottom:12}}>
+          <div style={{fontSize:10,fontWeight:800,color:"#888",letterSpacing:1,marginBottom:5}}>MOTIVO <span style={{color:"#dc2626"}}>*</span></div>
+          <textarea value={motivo} onChange={e=>{ setMotivo(e.target.value); setError(""); }} placeholder="Es. Sono rimasto fino alle 20 per emergenza…" rows={3} style={{width:"100%",padding:"10px 12px",border:"2px solid #e0e0d8",borderRadius:8,fontSize:13,fontFamily:"'Josefin Sans',sans-serif",outline:"none",color:"#1a1a1a",resize:"vertical",boxSizing:"border-box",lineHeight:1.5}}/>
+        </div>
+        {error && (
+          <div style={{background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:"#b91c1c"}}>{error}</div>
+        )}
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={onClose} disabled={busy} style={{flex:1,padding:"11px",background:"#f0f0ea",border:"none",borderRadius:8,fontSize:12,fontWeight:700,color:"#888",cursor:busy?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>Annulla</button>
+          <button onClick={submit} disabled={busy} style={{flex:1.6,padding:"11px",background:busy?"#aaa":"#16a34a",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:800,cursor:busy?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>
+            {busy ? "Invio…" : "Invia richiesta"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MyShifts({ name, onBack }) {
+  const [mi, setMi]             = useState(0);
+  const [shifts, setShifts]     = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [editShift, setEditShift] = useState(null);
+
+  const m = MONTHS[mi];
+  const monthPrefix = `${YEAR}-${pad2(m.id)}-`;
+  const dowNames = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"];
+  const fmtN = n => Number.isInteger(n) ? `${n}` : n.toFixed(1).replace(/\.0$/,"");
+
+  async function load() {
+    setLoading(true);
+    try {
+      const tcResp = await fetch(`${SB_URL}/rest/v1/${TABLE_TC}?bagnino=eq.${encodeURIComponent(name)}&select=*&order=data.asc`, { headers: H });
+      const tc     = tcResp.ok ? await tcResp.json() : [];
+      const ro     = await roForBagnino(name);
+      setShifts(Array.isArray(tc) ? tc : []);
+      setRequests(Array.isArray(ro) ? ro : []);
+    } catch(e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  const monthShifts = shifts.filter(s => s.data.startsWith(monthPrefix));
+  const totalOre    = monthShifts.reduce((s, x) => s + Number(x.ore || 0), 0);
+
+  function latestRequestFor(s) {
+    return requests
+      .filter(r => r.bagnino === name && r.data === s.data && r.turno === s.turno)
+      .sort((a,b) => new Date(b.creata_il) - new Date(a.creata_il))[0];
+  }
+
+  return (
+    <div style={S.page}>
+      <div style={S.bar}>
+        <button onClick={onBack} style={S.back}>←</button>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={S.barLabel}>I miei turni</div>
+          <div style={S.barName}>{name}</div>
+        </div>
+      </div>
+
+      <div style={{...S.tabs,marginTop:8}}>
+        {MONTHS.map((mo,i)=>(
+          <button key={mo.id} onClick={()=>setMi(i)} style={{...S.tab,...(i===mi?S.tabOn:{})}}>{mo.short}</button>
+        ))}
+      </div>
+
+      <div style={{padding:"12px 14px 32px",flex:1,display:"flex",flexDirection:"column",gap:10}}>
+        {loading ? (
+          <div style={{padding:"30px",textAlign:"center",color:"#888",fontFamily:"'Josefin Sans',sans-serif"}}>Caricamento turni…</div>
+        ) : monthShifts.length === 0 ? (
+          <div style={{padding:"30px",textAlign:"center",color:"#bbb",background:"#fff",borderRadius:12,border:"1px solid #e8e8e2",fontFamily:"'Josefin Sans',sans-serif"}}>
+            Nessun turno confermato per {m.name}
+          </div>
+        ) : monthShifts.map(s => {
+          const [, mm, dd] = s.data.split("-").map(Number);
+          const dow = getDow(mm, dd);
+          const req = latestRequestFor(s);
+          const isPending  = req?.stato === "pending";
+          const isApproved = req?.stato === "approvata";
+          const isRejected = req?.stato === "rifiutata";
+          const showEdit = !isPending && !isApproved;
+          return (
+            <div key={s.id} style={{
+              background:"#fff",
+              borderRadius:12,
+              border:`1px solid ${isPending?"#fde68a":(isApproved?"#86efac":"#e8e8e2")}`,
+              boxShadow:"0 1px 4px #0000000a",
+              padding:"14px",
+              fontFamily:"'Josefin Sans',sans-serif",
+            }}>
+              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:isPending||isApproved||isRejected?8:6}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:14,fontWeight:800,color:"#1a1a1a"}}>{dowNames[dow]} {dd} {m.name}</div>
+                  <div style={{fontSize:11,color:"#888",marginTop:2,fontWeight:600}}>Turno {shiftLabel(dow, s.turno)}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:22,fontWeight:800,color:isApproved?"#16a34a":"#1a1a1a",lineHeight:1}}>{fmtN(Number(s.ore))}h</div>
+                </div>
+              </div>
+
+              {isPending && (
+                <div style={{background:"#fef9c3",border:"1px solid #fde68a",borderRadius:6,padding:"7px 10px",fontSize:11,color:"#854d0e",fontWeight:700,lineHeight:1.5}}>
+                  ⏳ In attesa di approvazione · richieste <strong>{fmtN(Number(req.ore_richieste))}h</strong>
+                </div>
+              )}
+              {isApproved && (
+                <div style={{background:"#dcfce7",border:"1px solid #86efac",borderRadius:6,padding:"7px 10px",fontSize:11,color:"#166534",fontWeight:700}}>
+                  ✓ Approvata · ore aggiornate
+                </div>
+              )}
+              {isRejected && (
+                <div style={{background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:6,padding:"7px 10px",fontSize:11,color:"#b91c1c",fontWeight:700,lineHeight:1.5,marginBottom:showEdit?8:0}}>
+                  ✗ Rifiutata{req.nota_admin ? `: ${req.nota_admin}` : ""}
+                </div>
+              )}
+
+              {showEdit && (
+                <button onClick={()=>setEditShift(s)} style={{marginTop:isRejected?0:6,width:"100%",padding:"9px",background:"#fff",border:"2px solid #e0e0d8",borderRadius:8,fontSize:12,fontWeight:700,color:"#1a1a1a",cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>
+                  ✏️ {isRejected ? "Richiedi di nuovo" : "Modifica ore"}
+                </button>
+              )}
+            </div>
+          );
+        })}
+
+        {!loading && monthShifts.length > 0 && (
+          <div style={{background:"#1a1a1a",color:"#fff",borderRadius:12,padding:"14px 18px",marginTop:6,display:"flex",justifyContent:"space-between",alignItems:"center",fontFamily:"'Josefin Sans',sans-serif"}}>
+            <div>
+              <div style={{fontSize:9,color:"#F5C200",fontWeight:700,letterSpacing:2}}>TOTALE {m.name.toUpperCase()}</div>
+              <div style={{fontSize:11,color:"#aaa",marginTop:2}}>{monthShifts.length} turn{monthShifts.length===1?"o":"i"}</div>
+            </div>
+            <div style={{fontSize:30,fontWeight:800,color:"#F5C200",lineHeight:1}}>{fmtN(totalOre)}h</div>
+          </div>
+        )}
+      </div>
+
+      {editShift && (
+        <EditHoursModal
+          shift={editShift}
+          onClose={()=>setEditShift(null)}
+          onSubmitted={async () => { setEditShift(null); await load(); }}
+        />
+      )}
     </div>
   );
 }
@@ -1651,6 +1926,123 @@ function Hours({ data }) {
   );
 }
 
+// ─── ADMIN — RICHIESTE ORE ────────────────────────────────────────────────
+function AdminRichieste({ onChange }) {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [actingId, setActingId] = useState(null);
+
+  async function load() {
+    setLoading(true);
+    setRequests(await roAll());
+    setLoading(false);
+  }
+  useEffect(() => { load(); }, []);
+
+  const dowNames = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"];
+  const fmtN = n => Number.isInteger(Number(n)) ? `${Number(n)}` : Number(n).toFixed(1).replace(/\.0$/,"");
+  function fmtDate(dataStr) {
+    const [y,m,d] = dataStr.split("-").map(Number);
+    const monthName = MONTHS.find(x => x.id === m)?.name || "";
+    const dow = new Date(y, m-1, d).getDay();
+    return `${dowNames[dow]} ${d} ${monthName}`;
+  }
+
+  async function approve(req) {
+    const msg = `Approvare la richiesta di ${req.bagnino}?\n${fmtDate(req.data)} · turno ${req.turno}\n${fmtN(req.ore_confermate)}h → ${fmtN(req.ore_richieste)}h\n\nIl record in turni_confermati verrà aggiornato.`;
+    if (!window.confirm(msg)) return;
+    setActingId(req.id);
+    try {
+      await roApprove(req);
+      await load();
+      if (onChange) await onChange();
+    } catch (e) {
+      window.alert(`Errore approvazione: ${e.message}`);
+    } finally {
+      setActingId(null);
+    }
+  }
+  async function reject(req) {
+    const nota = window.prompt(`Rifiutare la richiesta di ${req.bagnino}?\n${fmtDate(req.data)} · turno ${req.turno}\n${fmtN(req.ore_confermate)}h → ${fmtN(req.ore_richieste)}h\n\nMotivo del rifiuto (opzionale, verrà mostrato al bagnino):`);
+    if (nota === null) return;
+    setActingId(req.id);
+    try {
+      await roReject(req.id, nota);
+      await load();
+      if (onChange) await onChange();
+    } catch (e) {
+      window.alert(`Errore rifiuto: ${e.message}`);
+    } finally {
+      setActingId(null);
+    }
+  }
+
+  function reqCard(req, accent) {
+    const [, mm, dd] = req.data.split("-").map(Number);
+    const dow = getDow(mm, dd);
+    const isPending = req.stato === "pending";
+    const busy = actingId === req.id;
+    return (
+      <div key={req.id} style={{background:"#fff",borderRadius:10,border:`1px solid ${accent}`,padding:"12px 14px",boxShadow:"0 1px 4px #0000000a",fontFamily:"'Josefin Sans',sans-serif"}}>
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:8}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:800,color:"#1a1a1a"}}>{req.bagnino}</div>
+            <div style={{fontSize:11,color:"#888",fontWeight:600,marginTop:2}}>{fmtDate(req.data)} · {shiftLabel(dow, req.turno)}</div>
+          </div>
+          <div style={{textAlign:"right",fontSize:13,fontWeight:800,whiteSpace:"nowrap"}}>
+            <span style={{color:"#888"}}>{fmtN(req.ore_confermate)}h</span>
+            <span style={{color:"#aaa",margin:"0 4px"}}>→</span>
+            <span style={{color:"#1a1a1a"}}>{fmtN(req.ore_richieste)}h</span>
+          </div>
+        </div>
+        <div style={{fontSize:11,color:"#555",background:"#fafaf8",border:"1px solid #eee",borderRadius:6,padding:"7px 10px",lineHeight:1.55,marginBottom:8,fontStyle:"italic"}}>
+          "{req.motivo}"
+        </div>
+        {req.nota_admin && !isPending && (
+          <div style={{fontSize:10,color:"#9333ea",fontWeight:700,marginBottom:8,letterSpacing:0.2}}>Nota admin: {req.nota_admin}</div>
+        )}
+        {isPending ? (
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>reject(req)} disabled={busy} style={{flex:1,padding:"9px",background:"#fff",border:"2px solid #fca5a5",borderRadius:6,fontSize:11,fontWeight:800,color:"#dc2626",cursor:busy?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>✗ Rifiuta</button>
+            <button onClick={()=>approve(req)} disabled={busy} style={{flex:1,padding:"9px",background:"#16a34a",border:"none",borderRadius:6,fontSize:11,fontWeight:800,color:"#fff",cursor:busy?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>✓ Approva</button>
+          </div>
+        ) : (
+          <div style={{fontSize:10,color:"#aaa",textAlign:"right",letterSpacing:0.2}}>
+            gestita {req.gestita_il ? new Date(req.gestita_il).toLocaleString("it-IT",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "—"}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const pending   = requests.filter(r => r.stato === "pending");
+  const approvate = requests.filter(r => r.stato === "approvata");
+  const rifiutate = requests.filter(r => r.stato === "rifiutata");
+
+  if (loading) return (
+    <div style={{padding:"24px",textAlign:"center",color:"#888",fontFamily:"'Josefin Sans',sans-serif"}}>Caricamento richieste…</div>
+  );
+
+  function group(title, color, list, emptyMsg) {
+    return (
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        <div style={{fontSize:11,fontWeight:800,color:color,letterSpacing:1.5,marginBottom:2}}>{title} ({list.length})</div>
+        {list.length === 0
+          ? <div style={{padding:"14px",color:"#bbb",fontSize:11,textAlign:"center",background:"#fafaf8",border:"1px dashed #e0e0d8",borderRadius:8,fontFamily:"'Josefin Sans',sans-serif"}}>{emptyMsg}</div>
+          : list.map(r => reqCard(r, color === "#a16207" ? "#fde68a" : (color === "#166534" ? "#86efac" : "#fca5a5")))}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{padding:"12px 14px 32px",flex:1,display:"flex",flexDirection:"column",gap:18}}>
+      {group("🟡 IN ATTESA",  "#a16207", pending,   "Nessuna richiesta da gestire")}
+      {group("🟢 APPROVATE",  "#166534", approvate, "Nessuna richiesta approvata")}
+      {group("🔴 RIFIUTATE",  "#b91c1c", rifiutate, "Nessuna richiesta rifiutata")}
+    </div>
+  );
+}
+
 // ─── MERGE DUPLICATE NAMES ────────────────────────────────────────────────
 // JSONB merge helpers (used by the merge tool).
 // absent: { "6": [1,2,3], "7": [5] } → union of days per month.
@@ -1833,10 +2225,14 @@ function Admin({ onBack }) {
   const [view, setView]       = useState("calendar");
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [pendingReq, setPendingReq] = useState(0);
 
   async function reloadData() {
     const d = await sbAll();
     if (Array.isArray(d)) setData(d);
+  }
+  async function refreshPending() {
+    setPendingReq(await roPendingCount());
   }
 
   useEffect(()=>{
@@ -1845,6 +2241,7 @@ function Admin({ onBack }) {
       else { setLoadError(true); }
       setLoading(false);
     }).catch(()=>{ setLoadError(true); setLoading(false); });
+    refreshPending();
   },[]);
 
   async function handleDelete(nome) {
@@ -1969,12 +2366,18 @@ function Admin({ onBack }) {
           <button onClick={()=>setView("calendar")}  style={{...S.pill,cursor:"pointer",background:view==="calendar"?"#F5C200":"#f0f0ea",color:view==="calendar"?"#1a1a1a":"#aaa"}}>📅</button>
           <button onClick={()=>setView("checklist")} style={{...S.pill,cursor:"pointer",background:view==="checklist"?"#16a34a":"#f0f0ea",color:view==="checklist"?"#fff":"#aaa"}}>✓</button>
           <button onClick={()=>setView("hours")}     style={{...S.pill,cursor:"pointer",background:view==="hours"?"#1a1a1a":"#f0f0ea",color:view==="hours"?"#F5C200":"#aaa"}}>🕒</button>
+          <div style={{position:"relative"}}>
+            <button onClick={()=>setView("requests")} style={{...S.pill,cursor:"pointer",background:view==="requests"?"#dc2626":"#f0f0ea",color:view==="requests"?"#fff":"#aaa"}}>🔔</button>
+            {pendingReq > 0 && (
+              <span style={{position:"absolute",top:-5,right:-5,background:"#dc2626",color:"#fff",borderRadius:"50%",minWidth:18,height:18,padding:"0 4px",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",boxShadow:"0 1px 2px #00000033",letterSpacing:0}}>{pendingReq}</span>
+            )}
+          </div>
           <button onClick={()=>setView("export")}    style={{...S.pill,cursor:"pointer",background:view==="export"?"#2563eb":"#f0f0ea",color:view==="export"?"#fff":"#aaa"}}>AI</button>
         </div>
       </div>
 
       {/* Staff chips */}
-      {view!=="checklist" && view!=="hours" && (
+      {view!=="checklist" && view!=="hours" && view!=="requests" && (
       <div style={{padding:"10px 14px",display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
         <button onClick={handleAddBagnino} title="Crea un nuovo profilo bagnino vuoto" style={{background:"#16a34a",border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:11,fontWeight:800,color:"#fff",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",letterSpacing:0.3}}>
           + Nuovo bagnino
@@ -2037,6 +2440,9 @@ function Admin({ onBack }) {
 
       {/* HOURS VIEW */}
       {view==="hours" && <Hours data={data}/>}
+
+      {/* REQUESTS VIEW */}
+      {view==="requests" && <AdminRichieste onChange={refreshPending}/>}
 
       {/* EXPORT VIEW */}
       {view==="export" && (
@@ -2269,8 +2675,9 @@ export default function App() {
     else setAdminErr("Codice non corretto");
   }
 
-  if(screen==="hub")       return <Hub name={name.trim()} onPrefs={()=>setScreen("step1")} onCheck={()=>setScreen("checklist")} onBack={()=>setScreen("home")}/>;
+  if(screen==="hub")       return <Hub name={name.trim()} onPrefs={()=>setScreen("step1")} onCheck={()=>setScreen("checklist")} onMyShifts={()=>setScreen("myshifts")} onBack={()=>setScreen("home")}/>;
   if(screen==="checklist") return <Checklist name={name.trim()} onBack={()=>setScreen("hub")}/>;
+  if(screen==="myshifts")  return <MyShifts  name={name.trim()} onBack={()=>setScreen("hub")}/>;
   if(screen==="step1")     return <StepAbsent name={name.trim()} absent={absent} setAbsent={setAbsent} onNext={()=>setScreen("step2")} bagniniNames={bagniniNames} onNameChange={handleSelectName}/>;
   if(screen==="step2")     return <StepShifts name={name.trim()} absent={absent} shifts={shifts} setShifts={setShifts} onBack={()=>setScreen("step1")} onSubmit={handleSubmit} saving={saving} bagniniNames={bagniniNames} onNameChange={handleSelectName}/>;
   if(screen==="done")      return <Done name={name.trim()} onEdit={()=>setScreen("hub")}/>;
