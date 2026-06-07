@@ -713,40 +713,57 @@ function EditHoursModal({ shift, onClose, onSubmitted }) {
 }
 
 function MyShifts({ name, onBack }) {
-  const [mi, setMi]             = useState(0);
-  const [shifts, setShifts]     = useState([]);
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading]   = useState(true);
+  const [mi, setMi]               = useState(0);
+  const [allShifts, setAllShifts] = useState([]); // TUTTI i turni_confermati
+  const [requests, setRequests]   = useState([]); // solo le mie richieste
+  const [loading, setLoading]     = useState(true);
   const [editShift, setEditShift] = useState(null);
 
   const m = MONTHS[mi];
   const monthPrefix = `${YEAR}-${pad2(m.id)}-`;
-  const dowNames = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"];
+  const weeks = buildWeeks(m.id);
+  const myColor = nameColor(name);
   const fmtN = n => Number.isInteger(n) ? `${n}` : n.toFixed(1).replace(/\.0$/,"");
 
   async function load() {
     setLoading(true);
     try {
-      const tcResp = await fetch(`${SB_URL}/rest/v1/${TABLE_TC}?bagnino=eq.${encodeURIComponent(name)}&select=*&order=data.asc`, { headers: H });
-      const tc     = tcResp.ok ? await tcResp.json() : [];
-      const ro     = await roForBagnino(name);
-      setShifts(Array.isArray(tc) ? tc : []);
+      const [tcResp, ro] = await Promise.all([
+        fetch(`${SB_URL}/rest/v1/${TABLE_TC}?select=*&order=data.asc`, { headers: H }),
+        roForBagnino(name),
+      ]);
+      const tc = tcResp.ok ? await tcResp.json() : [];
+      setAllShifts(Array.isArray(tc) ? tc : []);
       setRequests(Array.isArray(ro) ? ro : []);
-    } catch(e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
+    } catch(e) { console.error(e); }
+    finally { setLoading(false); }
   }
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
-  const monthShifts = shifts.filter(s => s.data.startsWith(monthPrefix));
-  const totalOre    = monthShifts.reduce((s, x) => s + Number(x.ore || 0), 0);
+  const monthShifts   = allShifts.filter(s => s.data.startsWith(monthPrefix));
+  const myMonthShifts = monthShifts.filter(s => s.bagnino === name);
+  const myTotalOre    = myMonthShifts.reduce((sum, s) => sum + Number(s.ore || 0), 0);
 
-  function latestRequestFor(s) {
-    return requests
-      .filter(r => r.bagnino === name && r.data === s.data && r.turno === s.turno)
+  // Latest request from `name` for this shift's (data,turno); null if none.
+  function statusFor(shift) {
+    if (shift.bagnino !== name) return { mine: false, kind: null, req: null };
+    const req = requests
+      .filter(r => r.data === shift.data && r.turno === shift.turno)
       .sort((a,b) => new Date(b.creata_il) - new Date(a.creata_il))[0];
+    if (!req)                       return { mine: true, kind: "edit",     req: null };
+    if (req.stato === "pending")    return { mine: true, kind: "pending",  req };
+    if (req.stato === "approvata")  return { mine: true, kind: "approved", req };
+    if (req.stato === "rifiutata")  return { mine: true, kind: "rejected", req };
+    return { mine: true, kind: "edit", req: null };
+  }
+
+  function statusBadge(status) {
+    const { kind, req } = status;
+    if (kind === "edit")     return <span style={{fontSize:10,lineHeight:1}} title="Modifica ore">✏️</span>;
+    if (kind === "pending")  return <span style={{fontSize:10,lineHeight:1}} title="Richiesta in attesa">⏳</span>;
+    if (kind === "approved") return <span style={{fontSize:10,lineHeight:1,color:"#16a34a",fontWeight:800}} title="Richiesta approvata">✓</span>;
+    if (kind === "rejected") return <span style={{fontSize:10,lineHeight:1,color:"#dc2626",fontWeight:800}} title={req?.nota_admin ? `Rifiutata: ${req.nota_admin}` : "Richiesta rifiutata"}>✗</span>;
+    return null;
   }
 
   return (
@@ -765,75 +782,133 @@ function MyShifts({ name, onBack }) {
         ))}
       </div>
 
-      <div style={{padding:"12px 14px 32px",flex:1,display:"flex",flexDirection:"column",gap:10}}>
-        {loading ? (
-          <div style={{padding:"30px",textAlign:"center",color:"#888",fontFamily:"'Josefin Sans',sans-serif"}}>Caricamento turni…</div>
-        ) : monthShifts.length === 0 ? (
-          <div style={{padding:"30px",textAlign:"center",color:"#bbb",background:"#fff",borderRadius:12,border:"1px solid #e8e8e2",fontFamily:"'Josefin Sans',sans-serif"}}>
-            Nessun turno confermato per {m.name}
+      {loading ? (
+        <div style={{padding:"40px",textAlign:"center",color:"#888",fontFamily:"'Josefin Sans',sans-serif"}}>Caricamento turni…</div>
+      ) : (
+        <>
+          {/* Calendar grid */}
+          <div style={{padding:"6px 8px 14px"}}>
+            <div style={{...S.calTitle,padding:"6px 10px 8px"}}>{m.name} {YEAR}</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7, minmax(0,1fr))",gap:4,padding:"0 4px"}}>
+              {WEEK_LABELS.map((l,i)=>(
+                <div key={i} style={{textAlign:"center",fontSize:9,fontWeight:800,color:i>=5?"#c79500":"#888",padding:"4px 0",letterSpacing:1}}>{l}</div>
+              ))}
+              {weeks.flat().map((day, idx) => {
+                if (!day) return <div key={`e${idx}`}/>;
+                const date     = dateStrOf(m.id, day);
+                const dayRows  = monthShifts.filter(s => s.data === date);
+                const dow      = getDow(m.id, day);
+                const we       = isWE(m.id, day);
+                const defs     = getShifts(dow);
+                const hasMine  = dayRows.some(s => s.bagnino === name);
+                return (
+                  <div key={day} style={{
+                    background:"#fff",
+                    border: hasMine ? `2px solid ${myColor}` : `1px solid ${we ? "#f5e070" : "#e8e8e2"}`,
+                    borderRadius:9,
+                    padding:"5px 4px",
+                    minHeight:100,minWidth:0,
+                    display:"flex",flexDirection:"column",gap:2,
+                    fontFamily:"'Josefin Sans',sans-serif",
+                    boxShadow:"0 1px 3px #0000000a",
+                  }}>
+                    <div style={{fontSize:15,fontWeight:800,lineHeight:1,color:we?"#c79500":"#1a1a1a",marginBottom:1}}>{day}</div>
+                    {defs.map(def => {
+                      const inSlot = dayRows.filter(r => r.turno === def.id);
+                      if (!inSlot.length) return null;
+                      return (
+                        <div key={def.id} style={{display:"flex",flexDirection:"column",gap:1,marginTop:1}}>
+                          {/* Time chip (shift color) */}
+                          <div style={{
+                            background:def.color,color:def.text,
+                            fontSize:7,fontWeight:800,padding:"1px 4px",
+                            borderRadius:2,letterSpacing:0.2,alignSelf:"flex-start",lineHeight:1.3,
+                          }}>{shiftLabel(dow, def.id)}</div>
+                          {/* Bagnini chips */}
+                          {inSlot.map(sh => {
+                            const status     = statusFor(sh);
+                            const mine       = status.mine;
+                            const clickable  = mine && (status.kind === "edit" || status.kind === "rejected");
+                            const inner = (
+                              <>
+                                <span style={{
+                                  fontWeight: mine ? 800 : 600,
+                                  color: mine ? "#1a1a1a" : "#777",
+                                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",
+                                  flex:1,minWidth:0,fontSize:8,lineHeight:1.3,
+                                }}>{sh.bagnino.split(" ")[0]}·{fmtN(Number(sh.ore))}h</span>
+                                {mine && statusBadge(status)}
+                              </>
+                            );
+                            const baseStyle = {
+                              display:"flex",alignItems:"center",gap:3,
+                              padding: mine ? "1px 3px 1px 4px" : "1px 3px",
+                              borderRadius:3,minWidth:0,
+                              ...(mine ? {
+                                background:`${myColor}22`,
+                                borderLeft:`3px solid ${myColor}`,
+                              } : {
+                                opacity:0.5,
+                                background:"#fafaf8",
+                              }),
+                            };
+                            if (clickable) {
+                              return (
+                                <button key={sh.id} onClick={()=>setEditShift(sh)} style={{
+                                  ...baseStyle,
+                                  border:"none",cursor:"pointer",
+                                  fontFamily:"inherit",textAlign:"left",width:"100%",
+                                }}>{inner}</button>
+                              );
+                            }
+                            return <div key={sh.id} style={baseStyle}>{inner}</div>;
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        ) : monthShifts.map(s => {
-          const [, mm, dd] = s.data.split("-").map(Number);
-          const dow = getDow(mm, dd);
-          const req = latestRequestFor(s);
-          const isPending  = req?.stato === "pending";
-          const isApproved = req?.stato === "approvata";
-          const isRejected = req?.stato === "rifiutata";
-          const showEdit = !isPending && !isApproved;
-          return (
-            <div key={s.id} style={{
-              background:"#fff",
-              borderRadius:12,
-              border:`1px solid ${isPending?"#fde68a":(isApproved?"#86efac":"#e8e8e2")}`,
-              boxShadow:"0 1px 4px #0000000a",
-              padding:"14px",
-              fontFamily:"'Josefin Sans',sans-serif",
-            }}>
-              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:isPending||isApproved||isRejected?8:6}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:14,fontWeight:800,color:"#1a1a1a"}}>{dowNames[dow]} {dd} {m.name}</div>
-                  <div style={{fontSize:11,color:"#888",marginTop:2,fontWeight:600}}>Turno {shiftLabel(dow, s.turno)}</div>
+
+          {/* Footer */}
+          <div style={{padding:"0 14px 28px",fontFamily:"'Josefin Sans',sans-serif"}}>
+            {/* Personal totals */}
+            <div style={{background:"#1a1a1a",borderRadius:12,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,boxShadow:"0 2px 8px #0000000d"}}>
+              <div>
+                <div style={{fontSize:10,color:myColor,fontWeight:800,letterSpacing:1.5}}>I TUOI TURNI</div>
+                <div style={{fontSize:11,color:"#aaa",marginTop:2}}>{m.name} {YEAR}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:12,color:"#fff",fontWeight:700,letterSpacing:0.3}}>{myMonthShifts.length} turn{myMonthShifts.length===1?"o":"i"} · Totale</div>
+                <div style={{fontSize:32,fontWeight:800,color:myColor,lineHeight:1,marginTop:2}}>{fmtN(myTotalOre)}h</div>
+              </div>
+            </div>
+
+            {/* Legend */}
+            <div style={{background:"#fff",border:"1px solid #e8e8e2",borderRadius:10,padding:"12px 14px",boxShadow:"0 1px 4px #0000000a"}}>
+              <div style={{fontSize:10,fontWeight:800,color:"#888",letterSpacing:1.5,marginBottom:8}}>LEGENDA</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:"6px 14px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11}}>
+                  <div style={{width:18,height:11,background:`${myColor}22`,borderLeft:`3px solid ${myColor}`,borderRadius:2,flexShrink:0}}/>
+                  <span style={{color:"#1a1a1a",fontWeight:700}}>I tuoi turni</span>
                 </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:22,fontWeight:800,color:isApproved?"#16a34a":"#1a1a1a",lineHeight:1}}>{fmtN(Number(s.ore))}h</div>
+                <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11}}>
+                  <div style={{width:18,height:11,background:"#fafaf8",border:"1px solid #ddd",borderRadius:2,opacity:0.55,flexShrink:0}}/>
+                  <span style={{color:"#888",fontWeight:600}}>Altri bagnini</span>
                 </div>
               </div>
-
-              {isPending && (
-                <div style={{background:"#fef9c3",border:"1px solid #fde68a",borderRadius:6,padding:"7px 10px",fontSize:11,color:"#854d0e",fontWeight:700,lineHeight:1.5}}>
-                  ⏳ In attesa di approvazione · richieste <strong>{fmtN(Number(req.ore_richieste))}h</strong>
-                </div>
-              )}
-              {isApproved && (
-                <div style={{background:"#dcfce7",border:"1px solid #86efac",borderRadius:6,padding:"7px 10px",fontSize:11,color:"#166534",fontWeight:700}}>
-                  ✓ Approvata · ore aggiornate
-                </div>
-              )}
-              {isRejected && (
-                <div style={{background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:6,padding:"7px 10px",fontSize:11,color:"#b91c1c",fontWeight:700,lineHeight:1.5,marginBottom:showEdit?8:0}}>
-                  ✗ Rifiutata{req.nota_admin ? `: ${req.nota_admin}` : ""}
-                </div>
-              )}
-
-              {showEdit && (
-                <button onClick={()=>setEditShift(s)} style={{marginTop:isRejected?0:6,width:"100%",padding:"9px",background:"#fff",border:"2px solid #e0e0d8",borderRadius:8,fontSize:12,fontWeight:700,color:"#1a1a1a",cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>
-                  ✏️ {isRejected ? "Richiedi di nuovo" : "Modifica ore"}
-                </button>
-              )}
+              <div style={{marginTop:9,paddingTop:9,borderTop:"1px dashed #eee",display:"flex",flexWrap:"wrap",gap:"5px 14px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10}}><span style={{fontSize:11}}>✏️</span><span style={{color:"#888"}}>modifica ore</span></div>
+                <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10}}><span style={{fontSize:11}}>⏳</span><span style={{color:"#888"}}>in attesa</span></div>
+                <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10}}><span style={{color:"#16a34a",fontWeight:800,fontSize:11}}>✓</span><span style={{color:"#888"}}>approvata</span></div>
+                <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10}}><span style={{color:"#dc2626",fontWeight:800,fontSize:11}}>✗</span><span style={{color:"#888"}}>rifiutata</span></div>
+              </div>
             </div>
-          );
-        })}
-
-        {!loading && monthShifts.length > 0 && (
-          <div style={{background:"#1a1a1a",color:"#fff",borderRadius:12,padding:"14px 18px",marginTop:6,display:"flex",justifyContent:"space-between",alignItems:"center",fontFamily:"'Josefin Sans',sans-serif"}}>
-            <div>
-              <div style={{fontSize:9,color:"#F5C200",fontWeight:700,letterSpacing:2}}>TOTALE {m.name.toUpperCase()}</div>
-              <div style={{fontSize:11,color:"#aaa",marginTop:2}}>{monthShifts.length} turn{monthShifts.length===1?"o":"i"}</div>
-            </div>
-            <div style={{fontSize:30,fontWeight:800,color:"#F5C200",lineHeight:1}}>{fmtN(totalOre)}h</div>
           </div>
-        )}
-      </div>
+        </>
+      )}
 
       {editShift && (
         <EditHoursModal
