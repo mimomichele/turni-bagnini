@@ -2,16 +2,34 @@
 <html lang="it">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#1a1a1a" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Turni Bagnini · ASC Hotel</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@400;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-      body { background: #1a1a1a; font-family: 'Josefin Sans', sans-serif; -webkit-tap-highlight-color: transparent; }
+      html, body { font-family: 'Inter', system-ui, -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; -webkit-font-smoothing: antialiased; }
+      body { min-height: 100vh; min-height: 100dvh; background: #1a1a1a; }
+      /* Mobile-first container: max 430px centered. On phones (<430px) the
+         content fills the screen; on desktop the dark body shows around. */
+      #root {
+        max-width: 430px;
+        margin: 0 auto;
+        background: #f5f5f0;
+        min-height: 100vh;
+        min-height: 100dvh;
+        position: relative;
+        overflow-x: hidden;
+        box-shadow: 0 0 32px #00000040;
+      }
+      input, textarea, select, button { font-family: inherit; }
+      input[type="number"] { -moz-appearance: textfield; }
+      input[type="number"]::-webkit-outer-spin-button,
+      input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     </style>
   </head>
   <body>

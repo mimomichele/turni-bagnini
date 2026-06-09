@@ -1,5 +1,63 @@
 import { useState, useEffect, useRef } from "react";
 
+// Detect mobile breakpoint reactively (for swapping grid/list layouts).
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(typeof window !== "undefined" && window.innerWidth < breakpoint);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < breakpoint);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, [breakpoint]);
+  return isMobile;
+}
+
+// ─── ICON SYSTEM (Lucide-style stroke SVGs) ───────────────────────────────
+// Minimal flat icons used app-wide instead of emoji. Stroke-based, geometric,
+// inherit color via currentColor.
+function Icon({ name, size = 22, strokeWidth = 1.7, color = "currentColor", style }) {
+  const p = {
+    width: size, height: size, viewBox: "0 0 24 24",
+    fill: "none", stroke: color, strokeWidth,
+    strokeLinecap: "round", strokeLinejoin: "round",
+    style: { flexShrink: 0, ...style },
+    "aria-hidden": "true",
+  };
+  switch (name) {
+    case "arrowLeft":   return <svg {...p}><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>;
+    case "x":           return <svg {...p}><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>;
+    case "check":       return <svg {...p}><path d="M20 6L9 17l-5-5"/></svg>;
+    case "plus":        return <svg {...p}><path d="M12 5v14"/><path d="M5 12h14"/></svg>;
+    case "minus":       return <svg {...p}><path d="M5 12h14"/></svg>;
+    case "calendar":    return <svg {...p}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 3v4"/><path d="M16 3v4"/></svg>;
+    case "clock":       return <svg {...p}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>;
+    case "checklist":   return <svg {...p}><path d="M9 6h12"/><path d="M9 12h12"/><path d="M9 18h12"/><path d="M3 6l1.5 1.5L7 5"/><path d="M3 12l1.5 1.5L7 11"/><path d="M3 18l1.5 1.5L7 17"/></svg>;
+    case "swimmer":     return <svg {...p}><path d="M2 18c2 0 2-1.5 4-1.5S8 18 10 18s2-1.5 4-1.5S16 18 18 18s2-1.5 4-1.5"/><path d="M2 22c2 0 2-1.5 4-1.5S8 22 10 22s2-1.5 4-1.5S16 22 18 22s2-1.5 4-1.5"/><circle cx="16" cy="6" r="2"/><path d="M6 14l4-3 4 2 3-3"/></svg>;
+    case "edit":        return <svg {...p}><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>;
+    case "trash":       return <svg {...p}><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>;
+    case "refresh":     return <svg {...p}><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>;
+    case "download":    return <svg {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>;
+    case "upload":      return <svg {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>;
+    case "bell":        return <svg {...p}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>;
+    case "alert":       return <svg {...p}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>;
+    case "settings":    return <svg {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>;
+    case "shield":      return <svg {...p}><path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z"/></svg>;
+    case "lock":        return <svg {...p}><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
+    case "hourglass":   return <svg {...p}><path d="M5 2h14"/><path d="M5 22h14"/><path d="M7 2v4a5 5 0 0 0 10 0V2"/><path d="M7 22v-4a5 5 0 0 1 10 0v4"/></svg>;
+    case "user":        return <svg {...p}><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 5-6 8-6s6.5 2 8 6"/></svg>;
+    case "door":        return <svg {...p}><path d="M4 21h16"/><rect x="6" y="3" width="12" height="18" rx="1"/><circle cx="14.5" cy="12.5" r="0.7" fill="currentColor"/></svg>;
+    case "merge":       return <svg {...p}><path d="M8 3v18"/><path d="M16 3v18"/><path d="M8 9c4 0 4 6 8 6"/><path d="M16 9c-4 0-4 6-8 6"/></svg>;
+    case "broom":       return <svg {...p}><path d="M19 5l-7 7"/><path d="M14 10l-4 4-4 4-3-3 4-4 4-4z"/><path d="M5 16l3 3"/></svg>;
+    case "sparkles":    return <svg {...p}><path d="M12 3l1.9 5.6L19 10.5l-5.1 1.9L12 18l-1.9-5.6L5 10.5l5.1-1.9L12 3z"/></svg>;
+    case "ai":          return <svg {...p}><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg>;
+    case "sun":         return <svg {...p}><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M4.93 19.07l1.41-1.41"/><path d="M17.66 6.34l1.41-1.41"/></svg>;
+    case "moon":        return <svg {...p}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>;
+    case "lightning":   return <svg {...p}><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>;
+    case "loop":        return <svg {...p}><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>;
+    case "noEntry":     return <svg {...p}><circle cx="12" cy="12" r="9"/><path d="M6 12h12"/></svg>;
+    default:            return null;
+  }
+}
+
 // ─── SUPABASE CONFIG ───────────────────────────────────────────────────────
 const SB_URL      = import.meta.env.VITE_SUPABASE_URL;
 const SB_KEY      = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -475,7 +533,7 @@ function StepAbsent({ name, absent, setAbsent, onNext, bagniniNames, onNameChang
       <div style={S.bar}>
         <div style={{flex:1,minWidth:0}}>
           <div style={S.barLabel}>Turni Estivi 2026</div>
-          <select value={name} onChange={e=>onNameChange(e.target.value)} style={{color:"#1a1a1a",fontSize:17,fontWeight:800,fontFamily:"'Josefin Sans',sans-serif",background:"#fff",border:"none",borderBottom:"2px dashed #F5C200",outline:"none",cursor:"pointer",padding:"2px 0",lineHeight:1.2,maxWidth:"100%"}}>
+          <select value={name} onChange={e=>onNameChange(e.target.value)} style={{color:"#1a1a1a",fontSize:17,fontWeight:800,fontFamily:"'Inter',system-ui,-apple-system,sans-serif",background:"#fff",border:"none",borderBottom:"2px dashed #F5C200",outline:"none",cursor:"pointer",padding:"2px 0",lineHeight:1.2,maxWidth:"100%"}}>
             {!(bagniniNames||[]).includes(name) && name && <option value={name}>{name} (rimosso)</option>}
             {(bagniniNames||[]).map(n => <option key={n} value={n}>{n}</option>)}
           </select>
@@ -555,10 +613,10 @@ function StepShifts({ name, absent, shifts, setShifts, onBack, onSubmit, saving,
   return (
     <div style={S.page}>
       <div style={S.bar}>
-        <button onClick={onBack} style={S.back}>←</button>
+        <button onClick={onBack} aria-label="Indietro" style={S.back}><Icon name="arrowLeft" size={20}/></button>
         <div style={{flex:1,minWidth:0}}>
           <div style={S.barLabel}>Turni Estivi 2026</div>
-          <select value={name} onChange={e=>onNameChange(e.target.value)} style={{color:"#1a1a1a",fontSize:17,fontWeight:800,fontFamily:"'Josefin Sans',sans-serif",background:"#fff",border:"none",borderBottom:"2px dashed #F5C200",outline:"none",cursor:"pointer",padding:"2px 0",lineHeight:1.2,maxWidth:"100%"}}>
+          <select value={name} onChange={e=>onNameChange(e.target.value)} style={{color:"#1a1a1a",fontSize:17,fontWeight:800,fontFamily:"'Inter',system-ui,-apple-system,sans-serif",background:"#fff",border:"none",borderBottom:"2px dashed #F5C200",outline:"none",cursor:"pointer",padding:"2px 0",lineHeight:1.2,maxWidth:"100%"}}>
             {!(bagniniNames||[]).includes(name) && name && <option value={name}>{name} (rimosso)</option>}
             {(bagniniNames||[]).map(n => <option key={n} value={n}>{n}</option>)}
           </select>
@@ -619,7 +677,7 @@ function StepShifts({ name, absent, shifts, setShifts, onBack, onSubmit, saving,
                         background: on?s.color:"#f0f0ea",
                         color: on?s.text:"#444",
                         fontSize:10,fontWeight:800,cursor:"pointer",
-                        fontFamily:"'Josefin Sans',sans-serif",lineHeight:1.4,textAlign:"center",
+                        fontFamily:"'Inter',system-ui,-apple-system,sans-serif",lineHeight:1.4,textAlign:"center",
                       }}>
                         {shiftLabel(dow,s.id)}
                       </button>
@@ -646,14 +704,14 @@ function StepShifts({ name, absent, shifts, setShifts, onBack, onSubmit, saving,
 // ─── DONE ─────────────────────────────────────────────────────────────────
 function Done({ name, onEdit }) {
   return (
-    <div style={{minHeight:"100vh",background:"#f5f5f0",fontFamily:"'Josefin Sans',sans-serif",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center",padding:32}}>
+    <div style={{minHeight:"100vh",background:"#f5f5f0",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center",padding:32}}>
       <div style={{fontSize:60,marginBottom:16}}>🌊</div>
       <div style={{color:"#c79500",fontSize:10,letterSpacing:3,fontWeight:700,marginBottom:6}}>ASC HOTEL · PISCINA</div>
       <div style={{color:"#1a1a1a",fontSize:28,fontWeight:800,marginBottom:10}}>Grazie, {name}!</div>
       <div style={{color:"#888",fontSize:14,maxWidth:280,lineHeight:1.8,marginBottom:36}}>
         Le tue preferenze sono state salvate.<br/>Puoi rientrare in qualsiasi momento per modificarle.
       </div>
-      <button onClick={onEdit} style={{background:"transparent",border:"2px solid #e0e0d8",color:"#888",fontSize:13,padding:"12px 28px",borderRadius:10,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",fontWeight:700}}>
+      <button onClick={onEdit} style={{background:"transparent",border:"2px solid #e0e0d8",color:"#888",fontSize:13,padding:"12px 28px",borderRadius:10,cursor:"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",fontWeight:700}}>
         ← Torna al menu
       </button>
     </div>
@@ -662,48 +720,66 @@ function Done({ name, onEdit }) {
 
 // ─── HUB (dopo login) ─────────────────────────────────────────────────────
 function Hub({ name, onPrefs, onCheck, onMyShifts, onIngressi, onBack }) {
+  const initials = nameInitials(name);
+  const card = (props) => (
+    <button onClick={props.onClick} style={{
+      padding:"18px 16px",background:"#fff",color:BRAND_BLACK,
+      border:"1px solid #ececec",borderRadius:16,
+      cursor:"pointer",fontFamily:FONT_STACK,
+      display:"flex",alignItems:"center",gap:14,textAlign:"left",
+      boxShadow:"0 1px 3px #0000000a",minHeight:72,
+    }}>
+      <div style={{
+        width:48,height:48,minWidth:48,borderRadius:14,
+        background: props.iconBg,
+        color: props.iconColor,
+        display:"flex",alignItems:"center",justifyContent:"center",
+        flexShrink:0,
+      }}>
+        <Icon name={props.icon} size={24}/>
+      </div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:15,fontWeight:700,letterSpacing:"-0.01em"}}>{props.title}</div>
+        <div style={{fontSize:12,fontWeight:500,color:"#888",marginTop:3,lineHeight:1.4}}>{props.subtitle}</div>
+      </div>
+      <Icon name="arrowLeft" size={18} color="#cbcbcb" style={{transform:"rotate(180deg)"}}/>
+    </button>
+  );
   return (
     <div style={S.page}>
-      <div style={S.bar}>
-        <button onClick={onBack} style={S.back}>←</button>
-        <div style={{flex:1}}>
-          <div style={S.barLabel}>Ciao 👋</div>
-          <div style={S.barName}>{name}</div>
+      {/* Hero header with gradient */}
+      <div style={{
+        background:`linear-gradient(180deg, ${BRAND_BLACK} 0%, #2a2a2a 100%)`,
+        padding:"max(20px, env(safe-area-inset-top)) 16px 32px",
+        position:"relative",
+      }}>
+        <button onClick={onBack} aria-label="Indietro" style={{
+          position:"absolute",top:"max(16px, env(safe-area-inset-top))",left:16,
+          width:40,height:40,borderRadius:10,
+          background:"#ffffff15",color:"#fff",border:"none",
+          display:"flex",alignItems:"center",justifyContent:"center",
+          cursor:"pointer",
+        }}>
+          <Icon name="arrowLeft" size={20} color="#fff"/>
+        </button>
+        <div style={{textAlign:"center",marginTop:8}}>
+          <div style={{color:BRAND_YELLOW,fontSize:10,fontWeight:700,letterSpacing:3,textTransform:"uppercase",marginBottom:8}}>ASC Hotel · Piscina</div>
+          <div style={{
+            width:72,height:72,borderRadius:"50%",
+            background:BRAND_YELLOW,color:BRAND_BLACK,
+            display:"inline-flex",alignItems:"center",justifyContent:"center",
+            fontSize:24,fontWeight:800,letterSpacing:"-0.01em",
+            margin:"0 auto 12px",
+          }}>{initials}</div>
+          <div style={{color:"#fff",fontSize:22,fontWeight:700,lineHeight:1.2,letterSpacing:"-0.01em"}}>{name}</div>
+          <div style={{color:"#999",fontSize:13,fontWeight:500,marginTop:4}}>Pool Staff</div>
         </div>
       </div>
-      <div style={{padding:"22px 22px 28px",display:"flex",flexDirection:"column",gap:12,flex:1}}>
-        <button onClick={onIngressi} style={{padding:"20px 18px",background:"#0891b2",color:"#fff",border:"none",borderRadius:14,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:14,textAlign:"left",boxShadow:"0 2px 8px #0000000d"}}>
-          <span style={{fontSize:32}}>🏊</span>
-          <div style={{flex:1}}>
-            <div style={{fontSize:16,fontWeight:800}}>Ingressi Oggi</div>
-            <div style={{fontSize:11,fontWeight:600,opacity:0.85,marginTop:2}}>Check-in delle prenotazioni coworking</div>
-          </div>
-          <span style={{fontSize:22}}>→</span>
-        </button>
-        <button onClick={onPrefs} style={{padding:"20px 18px",background:"#F5C200",color:"#1a1a1a",border:"none",borderRadius:14,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:14,textAlign:"left",boxShadow:"0 2px 8px #0000000d"}}>
-          <span style={{fontSize:32}}>📝</span>
-          <div style={{flex:1}}>
-            <div style={{fontSize:16,fontWeight:800}}>Preferenze Turni</div>
-            <div style={{fontSize:11,fontWeight:600,opacity:0.7,marginTop:2}}>Assenze e turni preferiti per l'estate 2026</div>
-          </div>
-          <span style={{fontSize:22}}>→</span>
-        </button>
-        <button onClick={onMyShifts} style={{padding:"20px 18px",background:"#2563eb",color:"#fff",border:"none",borderRadius:14,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:14,textAlign:"left",boxShadow:"0 2px 8px #0000000d"}}>
-          <span style={{fontSize:32}}>📅</span>
-          <div style={{flex:1}}>
-            <div style={{fontSize:16,fontWeight:800}}>I miei turni</div>
-            <div style={{fontSize:11,fontWeight:600,opacity:0.85,marginTop:2}}>Turni confermati, ore lavorate e richieste</div>
-          </div>
-          <span style={{fontSize:22}}>→</span>
-        </button>
-        <button onClick={onCheck} style={{padding:"20px 18px",background:"#16a34a",color:"#fff",border:"none",borderRadius:14,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:14,textAlign:"left",boxShadow:"0 2px 8px #0000000d"}}>
-          <span style={{fontSize:32}}>✅</span>
-          <div style={{flex:1}}>
-            <div style={{fontSize:16,fontWeight:800}}>Checklist Giornaliera</div>
-            <div style={{fontSize:11,fontWeight:600,opacity:0.85,marginTop:2}}>Task ingresso/uscita e azioni periodiche</div>
-          </div>
-          <span style={{fontSize:22}}>→</span>
-        </button>
+      <div style={{padding:"20px 16px max(20px, env(safe-area-inset-bottom))",display:"flex",flexDirection:"column",gap:10,flex:1}}>
+        {card({ onClick:onIngressi,  icon:"swimmer",   title:"Ingressi Oggi",       subtitle:"Check-in prenotazioni coworking",   iconBg:"#cffafe", iconColor:"#0e7490" })}
+        {card({ onClick:onPrefs,     icon:"calendar",  title:"Preferenze Turni",    subtitle:"Assenze e turni preferiti 2026",    iconBg:"#fffbea", iconColor:"#a16207" })}
+        {card({ onClick:onMyShifts,  icon:"clock",     title:"I miei turni",        subtitle:"Confermati, ore lavorate, richieste", iconBg:"#dbeafe", iconColor:"#1d4ed8" })}
+        {card({ onClick:onCheck,     icon:"checklist", title:"Checklist Giornaliera", subtitle:"Task ingresso/uscita e periodiche", iconBg:"#dcfce7", iconColor:"#166534" })}
       </div>
     </div>
   );
@@ -721,9 +797,23 @@ function EditHoursModal({ shift, onClose, onSubmitted }) {
   const monthName = MONTHS.find(x => x.id === mm)?.name || "";
   const dowNames = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"];
 
+  // Stepper controls: bumps the input by 0.5h, clamped to [0.5, 24].
+  function bump(delta) {
+    const cur = parseFloat(ore);
+    const base = isNaN(cur) ? Number(shift.ore) || 0 : cur;
+    const next = Math.max(0.5, Math.min(24, Math.round((base + delta) * 2) / 2));
+    setOre(String(next));
+    setError("");
+  }
+  function fmtOre(v) {
+    const n = parseFloat(v);
+    if (isNaN(n)) return "—";
+    return Number.isInteger(n) ? `${n}h` : `${n}h`;
+  }
+
   async function submit() {
     const num = parseFloat(ore);
-    if (isNaN(num) || num <= 0) { setError("Inserisci un numero di ore valido"); return; }
+    if (isNaN(num) || num < 0.5 || num > 24) { setError("Inserisci un valore tra 0.5h e 24h"); return; }
     if (!motivo.trim()) { setError("Il motivo è obbligatorio"); return; }
     setBusy(true); setError("");
     try {
@@ -743,32 +833,67 @@ function EditHoursModal({ shift, onClose, onSubmitted }) {
     }
   }
 
+  const stepperBtn = (kind, onClick) => (
+    <button onClick={onClick} disabled={busy} aria-label={kind==="plus"?"Aggiungi 0.5h":"Sottrai 0.5h"} style={{
+      width:48,height:48,minWidth:48,
+      background:BRAND_BLACK,color:BRAND_YELLOW,
+      border:"none",borderRadius:12,
+      cursor:busy?"wait":"pointer",
+      display:"flex",alignItems:"center",justifyContent:"center",
+      flexShrink:0,
+    }}>
+      <Icon name={kind} size={22} strokeWidth={2.2}/>
+    </button>
+  );
+
   return (
-    <div style={{position:"fixed",inset:0,background:"#00000070",display:"flex",alignItems:"center",justifyContent:"center",zIndex:120,padding:14}}>
-      <div style={{background:"#fff",borderRadius:14,maxWidth:380,width:"100%",maxHeight:"92vh",overflowY:"auto",boxShadow:"0 8px 32px #00000035",padding:"20px",fontFamily:"'Josefin Sans',sans-serif"}}>
-        <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:14}}>
+    <div style={{position:"fixed",inset:0,background:"#00000080",display:"flex",alignItems:"center",justifyContent:"center",zIndex:120,padding:16}}>
+      <div style={{background:"#fff",borderRadius:18,maxWidth:380,width:"100%",maxHeight:"92vh",overflowY:"auto",boxShadow:"0 12px 48px #00000045",padding:"20px",fontFamily:FONT_STACK}}>
+        <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:18}}>
           <div style={{flex:1}}>
-            <div style={{fontSize:9,color:"#c79500",fontWeight:800,letterSpacing:1.5}}>RICHIESTA MODIFICA ORE</div>
-            <div style={{fontSize:18,fontWeight:800,color:"#1a1a1a",lineHeight:1.1,marginTop:2}}>✏️ {dowNames[dow]} {dd} {monthName}</div>
-            <div style={{fontSize:11,color:"#888",marginTop:6,lineHeight:1.55}}>Turno {shiftLabel(dow, shift.turno)} · ore confermate: <strong>{Number(shift.ore)}h</strong></div>
+            <div style={{fontSize:10,color:"#888",fontWeight:600,letterSpacing:1.5,textTransform:"uppercase"}}>Richiesta modifica ore</div>
+            <div style={{fontSize:20,fontWeight:700,color:BRAND_BLACK,lineHeight:1.2,marginTop:4,letterSpacing:"-0.01em",textTransform:"capitalize"}}>{dowNames[dow]} {dd} {monthName}</div>
+            <div style={{fontSize:12,color:"#666",marginTop:6,lineHeight:1.5}}>Turno {shiftLabel(dow, shift.turno)} · confermate <strong style={{color:BRAND_BLACK}}>{Number(shift.ore)}h</strong></div>
           </div>
-          <button onClick={onClose} disabled={busy} style={{background:"none",border:"none",fontSize:20,cursor:busy?"wait":"pointer",color:"#888",padding:"0 4px",lineHeight:1}}>✕</button>
+          <button onClick={onClose} disabled={busy} style={{...S.back,width:36,height:36,minWidth:36,borderRadius:10}}>
+            <Icon name="x" size={18}/>
+          </button>
         </div>
 
-        <div style={{marginBottom:10}}>
-          <div style={{fontSize:10,fontWeight:800,color:"#888",letterSpacing:1,marginBottom:5}}>ORE EFFETTIVE LAVORATE</div>
-          <input type="number" step="0.5" min="0" max="24" value={ore} onChange={e=>{ setOre(e.target.value); setError(""); }} style={{width:"100%",padding:"10px 12px",border:"2px solid #e0e0d8",borderRadius:8,fontSize:16,fontFamily:"'Josefin Sans',sans-serif",outline:"none",color:"#1a1a1a",fontWeight:800,boxSizing:"border-box"}}/>
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#666",marginBottom:8,letterSpacing:0.3}}>Ore effettive lavorate</div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {stepperBtn("minus", () => bump(-0.5))}
+            <div style={{flex:1,background:"#f5f5f0",borderRadius:12,padding:"10px 16px",textAlign:"center",border:"2px solid #e8e8e2"}}>
+              <input
+                type="number" step="0.5" min="0.5" max="24" inputMode="decimal"
+                value={ore}
+                onChange={e=>{ setOre(e.target.value); setError(""); }}
+                onBlur={e => {
+                  const n = parseFloat(e.target.value);
+                  if (!isNaN(n)) setOre(String(Math.round(n*2)/2));
+                }}
+                style={{width:"100%",border:"none",outline:"none",background:"transparent",color:BRAND_BLACK,fontSize:24,fontWeight:700,textAlign:"center",letterSpacing:"-0.01em",fontFamily:FONT_STACK}}
+              />
+              <div style={{fontSize:10,color:"#888",marginTop:2,fontWeight:500,letterSpacing:0.3}}>{fmtOre(ore)} (step 0.5h)</div>
+            </div>
+            {stepperBtn("plus", () => bump(+0.5))}
+          </div>
         </div>
-        <div style={{marginBottom:12}}>
-          <div style={{fontSize:10,fontWeight:800,color:"#888",letterSpacing:1,marginBottom:5}}>MOTIVO <span style={{color:"#dc2626"}}>*</span></div>
-          <textarea value={motivo} onChange={e=>{ setMotivo(e.target.value); setError(""); }} placeholder="Es. Sono rimasto fino alle 20 per emergenza…" rows={3} style={{width:"100%",padding:"10px 12px",border:"2px solid #e0e0d8",borderRadius:8,fontSize:13,fontFamily:"'Josefin Sans',sans-serif",outline:"none",color:"#1a1a1a",resize:"vertical",boxSizing:"border-box",lineHeight:1.5}}/>
+
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#666",marginBottom:8,letterSpacing:0.3}}>Motivo <span style={{color:"#dc2626"}}>*</span></div>
+          <textarea value={motivo} onChange={e=>{ setMotivo(e.target.value); setError(""); }} placeholder="Es. Sono rimasto fino alle 20 per emergenza…" rows={3} style={{width:"100%",padding:"12px 14px",border:"2px solid #e8e8e2",borderRadius:12,fontSize:14,fontFamily:FONT_STACK,outline:"none",color:BRAND_BLACK,resize:"vertical",boxSizing:"border-box",lineHeight:1.5,background:"#fafaf8"}}/>
         </div>
         {error && (
-          <div style={{background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:"#b91c1c"}}>{error}</div>
+          <div style={{display:"flex",alignItems:"center",gap:8,background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:12,padding:"10px 14px",marginBottom:14,fontSize:13,color:"#b91c1c"}}>
+            <Icon name="alert" size={16}/>{error}
+          </div>
         )}
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={onClose} disabled={busy} style={{flex:1,padding:"11px",background:"#f0f0ea",border:"none",borderRadius:8,fontSize:12,fontWeight:700,color:"#888",cursor:busy?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>Annulla</button>
-          <button onClick={submit} disabled={busy} style={{flex:1.6,padding:"11px",background:busy?"#aaa":"#16a34a",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:800,cursor:busy?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={onClose} disabled={busy} style={{flex:1,padding:"14px",background:"#f5f5f0",border:"none",borderRadius:12,fontSize:14,fontWeight:600,color:"#666",cursor:busy?"wait":"pointer",fontFamily:FONT_STACK,minHeight:48}}>Annulla</button>
+          <button onClick={submit} disabled={busy} style={{flex:1.6,padding:"14px",background:busy?"#aaa":BRAND_BLACK,color:BRAND_YELLOW,border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:busy?"wait":"pointer",fontFamily:FONT_STACK,minHeight:48,display:"inline-flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            <Icon name="check" size={18}/>
             {busy ? "Invio…" : "Invia richiesta"}
           </button>
         </div>
@@ -834,7 +959,7 @@ function MyShifts({ name, onBack }) {
   return (
     <div style={S.page}>
       <div style={S.bar}>
-        <button onClick={onBack} style={S.back}>←</button>
+        <button onClick={onBack} aria-label="Indietro" style={S.back}><Icon name="arrowLeft" size={20}/></button>
         <div style={{flex:1,minWidth:0}}>
           <div style={S.barLabel}>I miei turni</div>
           <div style={S.barName}>{name}</div>
@@ -848,7 +973,7 @@ function MyShifts({ name, onBack }) {
       </div>
 
       {loading ? (
-        <div style={{padding:"40px",textAlign:"center",color:"#888",fontFamily:"'Josefin Sans',sans-serif"}}>Caricamento turni…</div>
+        <div style={{padding:"40px",textAlign:"center",color:"#888",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>Caricamento turni…</div>
       ) : (
         <>
           {/* Calendar grid */}
@@ -874,7 +999,7 @@ function MyShifts({ name, onBack }) {
                     padding:"5px 4px",
                     minHeight:100,minWidth:0,
                     display:"flex",flexDirection:"column",gap:2,
-                    fontFamily:"'Josefin Sans',sans-serif",
+                    fontFamily:"'Inter',system-ui,-apple-system,sans-serif",
                     boxShadow:"0 1px 3px #0000000a",
                   }}>
                     <div style={{fontSize:15,fontWeight:800,lineHeight:1,color:we?"#c79500":"#1a1a1a",marginBottom:1}}>{day}</div>
@@ -938,7 +1063,7 @@ function MyShifts({ name, onBack }) {
           </div>
 
           {/* Footer */}
-          <div style={{padding:"0 14px 28px",fontFamily:"'Josefin Sans',sans-serif"}}>
+          <div style={{padding:"0 14px 28px",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>
             {/* Personal totals */}
             <div style={{background:"#1a1a1a",borderRadius:12,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,boxShadow:"0 2px 8px #0000000d"}}>
               <div>
@@ -1042,7 +1167,7 @@ function IngressiOggi({ name, onBack }) {
   return (
     <div style={S.page}>
       <div style={S.bar}>
-        <button onClick={onBack} style={S.back}>←</button>
+        <button onClick={onBack} aria-label="Indietro" style={S.back}><Icon name="arrowLeft" size={20}/></button>
         <div style={{flex:1,minWidth:0}}>
           <div style={S.barLabel}>Ingressi Oggi</div>
           <div style={{...S.barName,textTransform:"capitalize"}}>{todayLabel}</div>
@@ -1052,7 +1177,7 @@ function IngressiOggi({ name, onBack }) {
 
       {/* Counter */}
       <div style={{padding:"10px 14px"}}>
-        <div style={{background:"#1a1a1a",color:"#fff",borderRadius:12,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",fontFamily:"'Josefin Sans',sans-serif",boxShadow:"0 2px 8px #0000000d"}}>
+        <div style={{background:"#1a1a1a",color:"#fff",borderRadius:12,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",boxShadow:"0 2px 8px #0000000d"}}>
           <div>
             <div style={{fontSize:10,color:"#F5C200",fontWeight:800,letterSpacing:1.5}}>PRENOTATI OGGI</div>
             <div style={{fontSize:11,color:"#aaa",marginTop:2}}>day-use coworking</div>
@@ -1068,7 +1193,7 @@ function IngressiOggi({ name, onBack }) {
 
       {/* Error banner */}
       {error && (
-        <div style={{margin:"0 14px 10px",background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:10,padding:"10px 12px",fontSize:11,color:"#b91c1c",lineHeight:1.5,fontFamily:"'Josefin Sans',sans-serif"}}>
+        <div style={{margin:"0 14px 10px",background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:10,padding:"10px 12px",fontSize:11,color:"#b91c1c",lineHeight:1.5,fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>
           ⚠ {error}
         </div>
       )}
@@ -1076,9 +1201,9 @@ function IngressiOggi({ name, onBack }) {
       {/* List */}
       <div style={{padding:"0 14px 32px",flex:1,display:"flex",flexDirection:"column",gap:8}}>
         {loading ? (
-          <div style={{padding:"30px",textAlign:"center",color:"#888",fontFamily:"'Josefin Sans',sans-serif"}}>Caricamento prenotazioni…</div>
+          <div style={{padding:"30px",textAlign:"center",color:"#888",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>Caricamento prenotazioni…</div>
         ) : bookings.length === 0 ? (
-          <div style={{padding:"30px",textAlign:"center",color:"#bbb",background:"#fff",borderRadius:12,border:"1px solid #e8e8e2",fontFamily:"'Josefin Sans',sans-serif"}}>
+          <div style={{padding:"30px",textAlign:"center",color:"#bbb",background:"#fff",borderRadius:12,border:"1px solid #e8e8e2",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>
             Nessuna prenotazione per oggi
           </div>
         ) : bookings.map(b => {
@@ -1094,7 +1219,7 @@ function IngressiOggi({ name, onBack }) {
               border: `1px solid ${isIn ? "#86efac" : "#e8e8e2"}`,
               padding: "12px 14px",
               boxShadow: "0 1px 4px #0000000a",
-              fontFamily: "'Josefin Sans',sans-serif",
+              fontFamily: "'Inter',system-ui,-apple-system,sans-serif",
             }}>
               <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:8}}>
                 <div style={{flex:1,minWidth:0}}>
@@ -1111,7 +1236,7 @@ function IngressiOggi({ name, onBack }) {
                   ✓ Entrato alle {inAt} da <strong>{ci.bagnino_nome}</strong>
                 </div>
               ) : (
-                <button onClick={()=>doCheckin(b)} disabled={busyId===b.id} style={{width:"100%",padding:"11px",background:busyId===b.id?"#aaa":"#16a34a",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:800,cursor:busyId===b.id?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.3}}>
+                <button onClick={()=>doCheckin(b)} disabled={busyId===b.id} style={{width:"100%",padding:"11px",background:busyId===b.id?"#aaa":"#16a34a",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:800,cursor:busyId===b.id?"wait":"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",letterSpacing:0.3}}>
                   {busyId===b.id ? "…" : "✓ Entrato"}
                 </button>
               )}
@@ -1164,14 +1289,14 @@ function Checklist({ name, onBack }) {
 
   if(loading) return (
     <div style={{...S.page,alignItems:"center",justifyContent:"center"}}>
-      <div style={{color:"#888",fontFamily:"'Josefin Sans',sans-serif"}}>Caricamento checklist…</div>
+      <div style={{color:"#888",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>Caricamento checklist…</div>
     </div>
   );
 
   return (
     <div style={S.page}>
       <div style={S.bar}>
-        <button onClick={onBack} style={S.back}>←</button>
+        <button onClick={onBack} aria-label="Indietro" style={S.back}><Icon name="arrowLeft" size={20}/></button>
         <div style={{flex:1}}>
           <div style={S.barLabel}>Checklist Giornaliera</div>
           <div style={S.barName}>{name}</div>
@@ -1214,7 +1339,7 @@ function Checklist({ name, onBack }) {
                       border:"none",
                       borderTop:"1px solid #f0f0ea",
                       cursor: busyId===t.id ? "wait" : (interactive ? "pointer" : "default"),
-                      textAlign:"left",fontFamily:"'Josefin Sans',sans-serif",
+                      textAlign:"left",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",
                       opacity: busyId===t.id ? 0.6 : 1,
                     }}>
                       <div style={{
@@ -1267,7 +1392,7 @@ function FreqInput({ task, onSave }) {
       onKeyDown={e => { if (e.key === "Enter") e.target.blur(); }}
       placeholder="—"
       title="Numero di giorni dopo i quali il task torna 'da fare'"
-      style={{width:46,padding:"4px 6px",border:"2px solid #e9d5ff",borderRadius:5,fontSize:11,textAlign:"center",fontFamily:"'Josefin Sans',sans-serif",outline:"none",color:"#9333ea",fontWeight:800,background:"#fff"}}
+      style={{width:46,padding:"4px 6px",border:"2px solid #e9d5ff",borderRadius:5,fontSize:11,textAlign:"center",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",outline:"none",color:"#9333ea",fontWeight:800,background:"#fff"}}
     />
   );
 }
@@ -1331,12 +1456,12 @@ function AdminChecklist() {
       color:      subTab===id ? "#F5C200":"#888",
       border:`2px solid ${subTab===id?"#1a1a1a":"#e0e0d8"}`,
       borderRadius:10,fontSize:12,fontWeight:800,cursor:"pointer",
-      fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.5,
+      fontFamily:"'Inter',system-ui,-apple-system,sans-serif",letterSpacing:0.5,
     }}>{label}</button>
   );
 
   if(loading) return (
-    <div style={{padding:"24px",color:"#888",fontFamily:"'Josefin Sans',sans-serif",textAlign:"center"}}>Caricamento checklist…</div>
+    <div style={{padding:"24px",color:"#888",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",textAlign:"center"}}>Caricamento checklist…</div>
   );
 
   return (
@@ -1351,8 +1476,8 @@ function AdminChecklist() {
         <>
           <div style={{background:"#fff",borderRadius:12,padding:"12px 14px",border:"1px solid #e8e8e2",display:"flex",alignItems:"center",gap:10,boxShadow:"0 1px 4px #0000000a",flexWrap:"wrap"}}>
             <div style={{color:"#888",fontSize:10,fontWeight:800,letterSpacing:1.2,flex:1,minWidth:"100%",marginBottom:2}}>STORICO PER DATA (giornaliere)</div>
-            <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{padding:"7px 10px",border:"2px solid #e0e0d8",borderRadius:8,fontFamily:"'Josefin Sans',sans-serif",fontSize:12,color:"#1a1a1a",outline:"none"}}/>
-            <button onClick={()=>setDate(todayISO())} style={{padding:"7px 12px",background:"#f0f0ea",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",color:"#888"}}>Oggi</button>
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{padding:"7px 10px",border:"2px solid #e0e0d8",borderRadius:8,fontFamily:"'Inter',system-ui,-apple-system,sans-serif",fontSize:12,color:"#1a1a1a",outline:"none"}}/>
+            <button onClick={()=>setDate(todayISO())} style={{padding:"7px 12px",background:"#f0f0ea",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",color:"#888"}}>Oggi</button>
             <div style={{color:"#bbb",fontSize:10,marginLeft:"auto"}}>Le periodiche/occorrenza non dipendono dalla data</div>
           </div>
 
@@ -1419,7 +1544,7 @@ function AdminChecklist() {
                     <div style={{color:"#888",fontSize:10}}>{cat.sublabel}</div>
                   </div>
                   {!cat.daily && (
-                    <button onClick={()=>resetCat(cat.id)} title="Cancella tutti i completamenti di questa categoria" style={{padding:"6px 12px",background:cat.color,color:"#fff",border:"none",borderRadius:6,fontSize:10,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.5}}>
+                    <button onClick={()=>resetCat(cat.id)} title="Cancella tutti i completamenti di questa categoria" style={{padding:"6px 12px",background:cat.color,color:"#fff",border:"none",borderRadius:6,fontSize:10,fontWeight:800,cursor:"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",letterSpacing:0.5}}>
                       🔄 Reset
                     </button>
                   )}
@@ -1449,9 +1574,9 @@ function AdminChecklist() {
                       onChange={e=>setNewTitle({...newTitle,[cat.id]:e.target.value})}
                       onKeyDown={e=>e.key==="Enter"&&addTask(cat.id)}
                       placeholder="Nuovo task…"
-                      style={{flex:1,padding:"8px 10px",border:"2px solid #e0e0d8",borderRadius:6,fontSize:12,fontFamily:"'Josefin Sans',sans-serif",outline:"none",minWidth:0}}
+                      style={{flex:1,padding:"8px 10px",border:"2px solid #e0e0d8",borderRadius:6,fontSize:12,fontFamily:"'Inter',system-ui,-apple-system,sans-serif",outline:"none",minWidth:0}}
                     />
-                    <button onClick={()=>addTask(cat.id)} style={{padding:"8px 14px",background:cat.color,color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",whiteSpace:"nowrap"}}>+ Aggiungi</button>
+                    <button onClick={()=>addTask(cat.id)} style={{padding:"8px 14px",background:cat.color,color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:800,cursor:"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",whiteSpace:"nowrap"}}>+ Aggiungi</button>
                   </div>
                 </div>
               </div>
@@ -1470,7 +1595,7 @@ function ExportCalendar({ innerRef, month, weeks, monthRows, staffNames }) {
   return (
     <div ref={innerRef} style={{
       width:1200,padding:"32px 32px 28px",background:"#f5f5f0",
-      fontFamily:"'Josefin Sans',sans-serif",color:"#1a1a1a",
+      fontFamily:"'Inter',system-ui,-apple-system,sans-serif",color:"#1a1a1a",
       boxSizing:"border-box",
     }}>
       {/* Header */}
@@ -1638,7 +1763,7 @@ function ExportTurniModal({ confirmed, onClose }) {
 
   return (
     <div style={{position:"fixed",inset:0,background:"#00000070",display:"flex",alignItems:"center",justifyContent:"center",zIndex:120,padding:14}}>
-      <div style={{background:"#fff",borderRadius:14,maxWidth:560,width:"100%",maxHeight:"92vh",overflowY:"auto",boxShadow:"0 8px 32px #00000035",padding:"18px",fontFamily:"'Josefin Sans',sans-serif"}}>
+      <div style={{background:"#fff",borderRadius:14,maxWidth:560,width:"100%",maxHeight:"92vh",overflowY:"auto",boxShadow:"0 8px 32px #00000035",padding:"18px",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>
         <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:14}}>
           <div style={{flex:1}}>
             <div style={{fontSize:9,color:"#c79500",fontWeight:800,letterSpacing:1.5}}>EXPORT</div>
@@ -1682,11 +1807,11 @@ function ExportTurniModal({ confirmed, onClose }) {
         )}
 
         <div style={{display:"flex",gap:8}}>
-          <button onClick={onClose} disabled={busy} style={{flex:1,padding:"11px",background:"#f0f0ea",border:"none",borderRadius:8,fontSize:12,fontWeight:700,color:"#888",cursor:busy?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>Chiudi</button>
-          <button onClick={downloadJpg} disabled={busy} style={{flex:1.4,padding:"11px",background:busy?"#aaa":"#16a34a",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:800,cursor:busy?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>
+          <button onClick={onClose} disabled={busy} style={{flex:1,padding:"11px",background:"#f0f0ea",border:"none",borderRadius:8,fontSize:12,fontWeight:700,color:"#888",cursor:busy?"wait":"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>Chiudi</button>
+          <button onClick={downloadJpg} disabled={busy} style={{flex:1.4,padding:"11px",background:busy?"#aaa":"#16a34a",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:800,cursor:busy?"wait":"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>
             💾 Scarica JPG
           </button>
-          <button onClick={downloadPdf} disabled={busy} style={{flex:1.4,padding:"11px",background:busy?"#aaa":"#dc2626",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:800,cursor:busy?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>
+          <button onClick={downloadPdf} disabled={busy} style={{flex:1.4,padding:"11px",background:busy?"#aaa":"#dc2626",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:800,cursor:busy?"wait":"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>
             📄 Scarica PDF
           </button>
         </div>
@@ -1701,6 +1826,7 @@ function HoursCalendar({ data, confirmed, reload }) {
   const [editAssign, setEditAssign] = useState([]);   // [{bagnino,turno,ore}]
   const [saving, setSaving]         = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const isMobile = useIsMobile(768);
 
   const m = MONTHS[mi];
   const weeks = buildWeeks(m.id);
@@ -1917,13 +2043,13 @@ function HoursCalendar({ data, confirmed, reload }) {
           <span style={{color:"#888",fontSize:10}}>Conflitto preferenze</span>
         </div>
         <div style={{marginLeft:"auto",display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
-          <button onClick={()=>setExportOpen(true)} title="Esporta il calendario dei turni confermati in JPG o PDF" style={{padding:"6px 10px",background:"#1a1a1a",color:"#F5C200",border:"none",borderRadius:6,fontSize:10,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.3,whiteSpace:"nowrap"}}>
+          <button onClick={()=>setExportOpen(true)} title="Esporta il calendario dei turni confermati in JPG o PDF" style={{padding:"6px 10px",background:"#1a1a1a",color:"#F5C200",border:"none",borderRadius:6,fontSize:10,fontWeight:800,cursor:"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",letterSpacing:0.3,whiteSpace:"nowrap"}}>
             📤 Esporta turni
           </button>
-          <button onClick={cleanupOrphans} title="Cancella da turni_confermati le righe senza preferenza corrispondente in bagnini_preferenze" style={{padding:"6px 10px",background:"#fff",color:"#666",border:"2px dashed #aaa",borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.3,whiteSpace:"nowrap"}}>
+          <button onClick={cleanupOrphans} title="Cancella da turni_confermati le righe senza preferenza corrispondente in bagnini_preferenze" style={{padding:"6px 10px",background:"#fff",color:"#666",border:"2px dashed #aaa",borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",letterSpacing:0.3,whiteSpace:"nowrap"}}>
             🧹 Ripulisci turni senza preferenza
           </button>
-          <button onClick={confirmMonthFromPrefs} style={{padding:"6px 10px",background:"#16a34a",color:"#fff",border:"none",borderRadius:6,fontSize:10,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.3,whiteSpace:"nowrap"}}>
+          <button onClick={confirmMonthFromPrefs} style={{padding:"6px 10px",background:"#16a34a",color:"#fff",border:"none",borderRadius:6,fontSize:10,fontWeight:800,cursor:"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",letterSpacing:0.3,whiteSpace:"nowrap"}}>
             ✓ Conferma mese da preferenze
           </button>
         </div>
@@ -1933,6 +2059,83 @@ function HoursCalendar({ data, confirmed, reload }) {
         <ExportTurniModal confirmed={confirmed} onClose={()=>setExportOpen(false)}/>
       )}
 
+      {isMobile ? (
+        // ─── MOBILE: vista lista — un giorno per riga, espandibile ──────
+        <div style={{padding:"6px 16px 24px"}}>
+          <div style={{...S.calTitle,padding:"4px 0 10px"}}>{m.name} 2026</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {Array.from({length: m.days}, (_, i) => i + 1).map(day => {
+              const date    = dateStrOf(m.id, day);
+              const dayConf = dayConfirmed(m.id, day);
+              const dayPref = dayPrefs(m.id, day);
+              const isConf  = dayConf.length > 0;
+              const display = isConf
+                ? dayConf.map(c=>({bagnino:c.bagnino,turno:c.turno,ore:Number(c.ore)}))
+                : dayPref.map(p=>({bagnino:p.bagnino,turno:p.turno,ore:shiftHours(getDow(m.id,day),p.turno)}));
+              const dow      = getDow(m.id, day);
+              const we       = isWE(m.id, day);
+              const conflicts = countOverlaps(display);
+              const needsChoice = isConf && conflicts > 0;
+              const dowName  = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"][dow];
+              return (
+                <button key={day} onClick={()=>openEdit(day)} style={{
+                  width:"100%",textAlign:"left",
+                  background: needsChoice ? "#fff7ed" : (isConf ? "#fff" : (display.length ? "#fffbea" : "#fff")),
+                  border: `1.5px solid ${needsChoice?"#fdba74":(isConf?"#86efac":(display.length?"#fde68a":"#e8e8e2"))}`,
+                  borderRadius:14,padding:"12px 14px",
+                  cursor:"pointer",fontFamily:FONT_STACK,
+                  display:"flex",flexDirection:"column",gap:8,
+                  minHeight:48,
+                }}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{
+                      width:48,height:48,minWidth:48,borderRadius:12,
+                      background: we ? "#fffbea" : "#f5f5f0",
+                      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                      flexShrink:0,
+                    }}>
+                      <div style={{fontSize:10,fontWeight:600,color:we?"#c79500":"#888",lineHeight:1,letterSpacing:0.5}}>{dowName.toUpperCase()}</div>
+                      <div style={{fontSize:20,fontWeight:800,color:we?"#c79500":BRAND_BLACK,lineHeight:1,marginTop:2,letterSpacing:"-0.01em"}}>{day}</div>
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      {display.length === 0 ? (
+                        <div style={{fontSize:13,color:"#bbb",fontStyle:"italic"}}>Nessun turno</div>
+                      ) : (
+                        <div style={{fontSize:13,fontWeight:600,color:isConf?"#166534":"#a16207",letterSpacing:"-0.005em"}}>
+                          {isConf ? `${display.length} confermat${display.length===1?"o":"i"}` : `${display.length} in preferenza`}
+                        </div>
+                      )}
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4,flexWrap:"wrap"}}>
+                        {needsChoice && (
+                          <span style={{background:"#f97316",color:"#fff",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:8,display:"inline-flex",alignItems:"center",gap:4}}>
+                            <Icon name="alert" size={11} strokeWidth={2.2}/>Devi scegliere
+                          </span>
+                        )}
+                        {!needsChoice && conflicts > 0 && (
+                          <span style={{background:"#fff7ed",color:"#c2410c",border:"1px solid #fdba74",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:8}}>⚠ {conflicts}</span>
+                        )}
+                      </div>
+                    </div>
+                    <Icon name="edit" size={18} color="#bbb"/>
+                  </div>
+                  {display.length > 0 && (
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,paddingLeft:58}}>
+                      {display.slice(0,6).map((a,i)=>(
+                        <span key={i} style={{
+                          background:isConf?"#dcfce7":"#fef9c3",
+                          color:isConf?"#166534":"#854d0e",
+                          fontSize:11,fontWeight:600,padding:"3px 8px",borderRadius:8,
+                        }}>{a.bagnino.split(" ")[0]} · {a.ore}h</span>
+                      ))}
+                      {display.length>6 && <span style={{color:"#aaa",fontSize:11,padding:"3px 4px"}}>+{display.length-6}</span>}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
       <div style={{padding:"6px 8px 24px"}}>
         <div style={{...S.calTitle,padding:"4px 10px 8px"}}>{m.name} 2026</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(7, minmax(0,1fr))",gap:4,padding:"0 4px"}}>
@@ -1957,7 +2160,7 @@ function HoursCalendar({ data, confirmed, reload }) {
                 display:"flex",flexDirection:"column",gap:3,
                 minHeight:88,minWidth:0,
                 cursor:"pointer",
-                fontFamily:"'Josefin Sans',sans-serif",
+                fontFamily:"'Inter',system-ui,-apple-system,sans-serif",
                 textAlign:"left",
                 boxShadow:"0 1px 3px #0000000a",
               }}>
@@ -1993,11 +2196,12 @@ function HoursCalendar({ data, confirmed, reload }) {
           })}
         </div>
       </div>
+      )}
 
       {/* EDIT MODAL */}
       {editDay && (
         <div style={{position:"fixed",inset:0,background:"#00000070",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:14}}>
-          <div style={{background:"#fff",borderRadius:14,maxWidth:420,width:"100%",maxHeight:"92vh",overflowY:"auto",boxShadow:"0 8px 32px #00000035",padding:"18px",fontFamily:"'Josefin Sans',sans-serif"}}>
+          <div style={{background:"#fff",borderRadius:14,maxWidth:420,width:"100%",maxHeight:"92vh",overflowY:"auto",boxShadow:"0 8px 32px #00000035",padding:"18px",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>
             <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:16}}>
               <div style={{flex:1}}>
                 <div style={{fontSize:9,color:"#c79500",fontWeight:800,letterSpacing:1.5}}>{MONTHS.find(x=>x.id===editDay.monthId).name.toUpperCase()} {YEAR}</div>
@@ -2034,11 +2238,11 @@ function HoursCalendar({ data, confirmed, reload }) {
                   if (a.turno !== s.id) return null;
                   return (
                     <div key={i} style={{display:"flex",gap:5,alignItems:"center",marginBottom:6}}>
-                      <select value={a.bagnino} onChange={e=>pickAssignBagnino(i, e.target.value)} style={{flex:1,padding:"7px 8px",border:"2px solid #e0e0d8",borderRadius:6,fontSize:12,fontFamily:"'Josefin Sans',sans-serif",outline:"none",background:"#fff",color:"#1a1a1a",minWidth:0}}>
+                      <select value={a.bagnino} onChange={e=>pickAssignBagnino(i, e.target.value)} style={{flex:1,padding:"7px 8px",border:"2px solid #e0e0d8",borderRadius:6,fontSize:12,fontFamily:"'Inter',system-ui,-apple-system,sans-serif",outline:"none",background:"#fff",color:"#1a1a1a",minWidth:0}}>
                         <option value="">— seleziona bagnino —</option>
                         {allNames.map(n => <option key={n} value={n}>{n}</option>)}
                       </select>
-                      <input type="number" step="0.5" min="0" value={a.ore} onChange={e=>updateAssign(i,{ore:Number(e.target.value)})} style={{width:54,padding:"7px 6px",border:"2px solid #e0e0d8",borderRadius:6,fontSize:12,fontFamily:"'Josefin Sans',sans-serif",outline:"none",textAlign:"center",color:"#1a1a1a"}}/>
+                      <input type="number" step="0.5" min="0" value={a.ore} onChange={e=>updateAssign(i,{ore:Number(e.target.value)})} style={{width:54,padding:"7px 6px",border:"2px solid #e0e0d8",borderRadius:6,fontSize:12,fontFamily:"'Inter',system-ui,-apple-system,sans-serif",outline:"none",textAlign:"center",color:"#1a1a1a"}}/>
                       <span style={{fontSize:11,color:"#888",fontWeight:700}}>h</span>
                       <button onClick={()=>removeAssign(i)} style={{background:"none",border:"none",color:"#e63946",cursor:"pointer",fontSize:14,padding:"4px 6px",lineHeight:1}} title="Rimuovi dalla conferma">✕</button>
                     </div>
@@ -2069,7 +2273,7 @@ function HoursCalendar({ data, confirmed, reload }) {
                   </div>
                 )}
 
-                <button onClick={()=>addAssign(s.id)} style={{background:"#fff",border:"1.5px dashed #ccc",borderRadius:6,padding:"6px 10px",fontSize:10,cursor:"pointer",color:"#888",fontFamily:"'Josefin Sans',sans-serif",fontWeight:700,width:"100%",marginTop:8,letterSpacing:0.3}}>
+                <button onClick={()=>addAssign(s.id)} style={{background:"#fff",border:"1.5px dashed #ccc",borderRadius:6,padding:"6px 10px",fontSize:10,cursor:"pointer",color:"#888",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",fontWeight:700,width:"100%",marginTop:8,letterSpacing:0.3}}>
                   + Aggiungi altro bagnino (dal dropdown)
                 </button>
               </div>
@@ -2077,9 +2281,9 @@ function HoursCalendar({ data, confirmed, reload }) {
             })}
 
             <div style={{display:"flex",gap:6,marginTop:14}}>
-              <button onClick={clearDay} disabled={saving} style={{flex:1,padding:"10px 6px",background:"#fff",border:"2px solid #fca5a5",borderRadius:8,fontSize:10,fontWeight:800,color:"#e63946",cursor:saving?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.3}}>🗑️ Reset</button>
-              <button onClick={()=>setEditDay(null)} disabled={saving} style={{flex:1,padding:"10px 6px",background:"#f0f0ea",border:"none",borderRadius:8,fontSize:11,fontWeight:700,color:"#888",cursor:saving?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>Annulla</button>
-              <button onClick={saveEdit} disabled={saving} style={{flex:1.6,padding:"10px 6px",background:saving?"#444":"#16a34a",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:800,cursor:saving?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>{saving?"…":"✓ Salva"}</button>
+              <button onClick={clearDay} disabled={saving} style={{flex:1,padding:"10px 6px",background:"#fff",border:"2px solid #fca5a5",borderRadius:8,fontSize:10,fontWeight:800,color:"#e63946",cursor:saving?"wait":"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",letterSpacing:0.3}}>🗑️ Reset</button>
+              <button onClick={()=>setEditDay(null)} disabled={saving} style={{flex:1,padding:"10px 6px",background:"#f0f0ea",border:"none",borderRadius:8,fontSize:11,fontWeight:700,color:"#888",cursor:saving?"wait":"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>Annulla</button>
+              <button onClick={saveEdit} disabled={saving} style={{flex:1.6,padding:"10px 6px",background:saving?"#444":"#16a34a",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:800,cursor:saving?"wait":"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>{saving?"…":"✓ Salva"}</button>
             </div>
           </div>
         </div>
@@ -2128,7 +2332,7 @@ function HoursSummary({ data, confirmed }) {
         </div>
 
         <div style={{overflowX:"auto"}}>
-          <table style={{width:"100%",borderCollapse:"collapse",fontFamily:"'Josefin Sans',sans-serif",minWidth:480}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",minWidth:480}}>
             <thead>
               <tr style={{background:"#fafaf8"}}>
                 <th style={{textAlign:"left",padding:"10px 12px",fontSize:10,fontWeight:800,color:"#888",letterSpacing:1,borderBottom:"1px solid #e8e8e2"}}>BAGNINO</th>
@@ -2189,11 +2393,11 @@ function Hours({ data }) {
   return (
     <div style={{padding:"8px 0 24px",display:"flex",flexDirection:"column",gap:6,flex:1}}>
       <div style={{display:"flex",gap:6,padding:"0 14px"}}>
-        <button onClick={()=>setTab("calendar")} style={{flex:1,padding:"10px 8px",background:tab==="calendar"?"#1a1a1a":"#fff",color:tab==="calendar"?"#F5C200":"#888",border:`2px solid ${tab==="calendar"?"#1a1a1a":"#e0e0d8"}`,borderRadius:10,fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.5}}>📅 Conferma turni</button>
-        <button onClick={()=>setTab("summary")}  style={{flex:1,padding:"10px 8px",background:tab==="summary" ?"#1a1a1a":"#fff",color:tab==="summary" ?"#F5C200":"#888",border:`2px solid ${tab==="summary" ?"#1a1a1a":"#e0e0d8"}`,borderRadius:10,fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.5}}>📊 Riepilogo ore</button>
+        <button onClick={()=>setTab("calendar")} style={{flex:1,padding:"10px 8px",background:tab==="calendar"?"#1a1a1a":"#fff",color:tab==="calendar"?"#F5C200":"#888",border:`2px solid ${tab==="calendar"?"#1a1a1a":"#e0e0d8"}`,borderRadius:10,fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",letterSpacing:0.5}}>📅 Conferma turni</button>
+        <button onClick={()=>setTab("summary")}  style={{flex:1,padding:"10px 8px",background:tab==="summary" ?"#1a1a1a":"#fff",color:tab==="summary" ?"#F5C200":"#888",border:`2px solid ${tab==="summary" ?"#1a1a1a":"#e0e0d8"}`,borderRadius:10,fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",letterSpacing:0.5}}>📊 Riepilogo ore</button>
       </div>
       {loading ? (
-        <div style={{padding:30,textAlign:"center",color:"#888",fontFamily:"'Josefin Sans',sans-serif"}}>Caricamento…</div>
+        <div style={{padding:30,textAlign:"center",color:"#888",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>Caricamento…</div>
       ) : (
         tab==="calendar"
           ? <HoursCalendar data={data} confirmed={confirmed} reload={reload}/>
@@ -2260,7 +2464,7 @@ function AdminRichieste({ onChange }) {
     const isPending = req.stato === "pending";
     const busy = actingId === req.id;
     return (
-      <div key={req.id} style={{background:"#fff",borderRadius:10,border:`1px solid ${accent}`,padding:"12px 14px",boxShadow:"0 1px 4px #0000000a",fontFamily:"'Josefin Sans',sans-serif"}}>
+      <div key={req.id} style={{background:"#fff",borderRadius:10,border:`1px solid ${accent}`,padding:"12px 14px",boxShadow:"0 1px 4px #0000000a",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>
         <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:8}}>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:13,fontWeight:800,color:"#1a1a1a"}}>{req.bagnino}</div>
@@ -2280,8 +2484,8 @@ function AdminRichieste({ onChange }) {
         )}
         {isPending ? (
           <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>reject(req)} disabled={busy} style={{flex:1,padding:"9px",background:"#fff",border:"2px solid #fca5a5",borderRadius:6,fontSize:11,fontWeight:800,color:"#dc2626",cursor:busy?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>✗ Rifiuta</button>
-            <button onClick={()=>approve(req)} disabled={busy} style={{flex:1,padding:"9px",background:"#16a34a",border:"none",borderRadius:6,fontSize:11,fontWeight:800,color:"#fff",cursor:busy?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>✓ Approva</button>
+            <button onClick={()=>reject(req)} disabled={busy} style={{flex:1,padding:"9px",background:"#fff",border:"2px solid #fca5a5",borderRadius:6,fontSize:11,fontWeight:800,color:"#dc2626",cursor:busy?"wait":"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>✗ Rifiuta</button>
+            <button onClick={()=>approve(req)} disabled={busy} style={{flex:1,padding:"9px",background:"#16a34a",border:"none",borderRadius:6,fontSize:11,fontWeight:800,color:"#fff",cursor:busy?"wait":"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>✓ Approva</button>
           </div>
         ) : (
           <div style={{fontSize:10,color:"#aaa",textAlign:"right",letterSpacing:0.2}}>
@@ -2297,7 +2501,7 @@ function AdminRichieste({ onChange }) {
   const rifiutate = requests.filter(r => r.stato === "rifiutata");
 
   if (loading) return (
-    <div style={{padding:"24px",textAlign:"center",color:"#888",fontFamily:"'Josefin Sans',sans-serif"}}>Caricamento richieste…</div>
+    <div style={{padding:"24px",textAlign:"center",color:"#888",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>Caricamento richieste…</div>
   );
 
   function group(title, color, list, emptyMsg) {
@@ -2305,7 +2509,7 @@ function AdminRichieste({ onChange }) {
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         <div style={{fontSize:11,fontWeight:800,color:color,letterSpacing:1.5,marginBottom:2}}>{title} ({list.length})</div>
         {list.length === 0
-          ? <div style={{padding:"14px",color:"#bbb",fontSize:11,textAlign:"center",background:"#fafaf8",border:"1px dashed #e0e0d8",borderRadius:8,fontFamily:"'Josefin Sans',sans-serif"}}>{emptyMsg}</div>
+          ? <div style={{padding:"14px",color:"#bbb",fontSize:11,textAlign:"center",background:"#fafaf8",border:"1px dashed #e0e0d8",borderRadius:8,fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>{emptyMsg}</div>
           : list.map(r => reqCard(r, color === "#a16207" ? "#fde68a" : (color === "#166534" ? "#86efac" : "#fca5a5")))}
       </div>
     );
@@ -2420,13 +2624,13 @@ function MergeNamesModal({ data, onClose, onMerged }) {
 
   const selectStyle = {
     width:"100%",padding:"9px 10px",border:"2px solid #e0e0d8",borderRadius:8,
-    fontSize:13,fontFamily:"'Josefin Sans',sans-serif",outline:"none",
+    fontSize:13,fontFamily:"'Inter',system-ui,-apple-system,sans-serif",outline:"none",
     background:"#fff",color:"#1a1a1a",
   };
 
   return (
     <div style={{position:"fixed",inset:0,background:"#00000070",display:"flex",alignItems:"center",justifyContent:"center",zIndex:120,padding:14}}>
-      <div style={{background:"#fff",borderRadius:14,maxWidth:440,width:"100%",maxHeight:"92vh",overflowY:"auto",boxShadow:"0 8px 32px #00000035",padding:"20px",fontFamily:"'Josefin Sans',sans-serif"}}>
+      <div style={{background:"#fff",borderRadius:14,maxWidth:440,width:"100%",maxHeight:"92vh",overflowY:"auto",boxShadow:"0 8px 32px #00000035",padding:"20px",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>
 
         {result ? (
           <div style={{textAlign:"center",padding:"4px 2px"}}>
@@ -2441,7 +2645,7 @@ function MergeNamesModal({ data, onClose, onMerged }) {
               <div>{result.tcError ? "⚠" : "✓"} {result.tcCount} righe rinominate in turni_confermati{result.tcError && <div style={{color:"#b91c1c",fontSize:10,fontStyle:"italic"}}>· {result.tcError}</div>}</div>
               <div>{result.ckError ? "⚠" : "✓"} {result.ckCount} righe rinominate in checklist_completamenti{result.ckError && <div style={{color:"#b91c1c",fontSize:10,fontStyle:"italic"}}>· {result.ckError}</div>}</div>
             </div>
-            <button onClick={onClose} style={{padding:"11px 26px",background:"#16a34a",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>Chiudi</button>
+            <button onClick={onClose} style={{padding:"11px 26px",background:"#16a34a",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>Chiudi</button>
           </div>
         ) : (
           <>
@@ -2480,8 +2684,8 @@ function MergeNamesModal({ data, onClose, onMerged }) {
             )}
 
             <div style={{display:"flex",gap:8,marginTop:6}}>
-              <button onClick={onClose} disabled={busy} style={{flex:1,padding:"11px",background:"#f0f0ea",border:"none",borderRadius:8,fontSize:12,fontWeight:700,color:"#888",cursor:busy?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>Annulla</button>
-              <button onClick={doMerge} disabled={busy || !master || !secondary || master===secondary} style={{flex:1.6,padding:"11px",background:(busy||!master||!secondary||master===secondary)?"#aaa":"#16a34a",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:800,cursor:(busy||!master||!secondary||master===secondary)?"not-allowed":"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>
+              <button onClick={onClose} disabled={busy} style={{flex:1,padding:"11px",background:"#f0f0ea",border:"none",borderRadius:8,fontSize:12,fontWeight:700,color:"#888",cursor:busy?"wait":"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>Annulla</button>
+              <button onClick={doMerge} disabled={busy || !master || !secondary || master===secondary} style={{flex:1.6,padding:"11px",background:(busy||!master||!secondary||master===secondary)?"#aaa":"#16a34a",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:800,cursor:(busy||!master||!secondary||master===secondary)?"not-allowed":"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>
                 {busy ? "Unione in corso…" : "✓ Conferma unione"}
               </button>
             </div>
@@ -2616,15 +2820,15 @@ function Admin({ onBack }) {
 
   if(loading) return (
     <div style={{...S.page,alignItems:"center",justifyContent:"center",gap:12}}>
-      <div style={{color:"#F5C200",fontFamily:"'Josefin Sans',sans-serif"}}>Caricamento dati…</div>
+      <div style={{color:"#F5C200",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>Caricamento dati…</div>
     </div>
   );
 
   if(loadError) return (
     <div style={{...S.page,alignItems:"center",justifyContent:"center",gap:16,padding:24}}>
       <div style={{fontSize:40}}>⚠️</div>
-      <div style={{color:"#1a1a1a",fontSize:16,fontWeight:800,fontFamily:"'Josefin Sans',sans-serif"}}>Errore di connessione</div>
-      <div style={{color:"#888",fontSize:13,textAlign:"center",fontFamily:"'Josefin Sans',sans-serif",lineHeight:1.6}}>
+      <div style={{color:"#1a1a1a",fontSize:16,fontWeight:800,fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>Errore di connessione</div>
+      <div style={{color:"#888",fontSize:13,textAlign:"center",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",lineHeight:1.6}}>
         Non riesco a caricare i dati da Supabase.<br/>Controlla la console per i dettagli.
       </div>
       <button onClick={onBack} style={{...S.btnY,marginTop:8}}>← Torna indietro</button>
@@ -2634,32 +2838,32 @@ function Admin({ onBack }) {
   return (
     <div style={{...S.page,background:"#f5f5f0"}}>
       <div style={{...S.bar,borderBottom:"3px solid #F5C200"}}>
-        <button onClick={onBack} style={S.back}>←</button>
+        <button onClick={onBack} aria-label="Indietro" style={S.back}><Icon name="arrowLeft" size={20}/></button>
         <div style={{flex:1}}>
           <div style={S.barLabel}>Admin · ASC Hotel Piscina</div>
           <div style={S.barName}>Turni 2026</div>
         </div>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
-          <button onClick={()=>setView("calendar")}  style={{...S.pill,cursor:"pointer",background:view==="calendar"?"#F5C200":"#f0f0ea",color:view==="calendar"?"#1a1a1a":"#aaa"}}>📅</button>
-          <button onClick={()=>setView("checklist")} style={{...S.pill,cursor:"pointer",background:view==="checklist"?"#16a34a":"#f0f0ea",color:view==="checklist"?"#fff":"#aaa"}}>✓</button>
-          <button onClick={()=>setView("hours")}     style={{...S.pill,cursor:"pointer",background:view==="hours"?"#1a1a1a":"#f0f0ea",color:view==="hours"?"#F5C200":"#aaa"}}>🕒</button>
+          <button onClick={()=>setView("calendar")}  aria-label="Calendario" style={{...S.pill,cursor:"pointer",background:view==="calendar"?BRAND_YELLOW:"#f0f0ea",color:view==="calendar"?BRAND_BLACK:"#666",padding:"8px 10px"}}><Icon name="calendar" size={18}/></button>
+          <button onClick={()=>setView("checklist")} aria-label="Checklist" style={{...S.pill,cursor:"pointer",background:view==="checklist"?"#16a34a":"#f0f0ea",color:view==="checklist"?"#fff":"#666",padding:"8px 10px"}}><Icon name="checklist" size={18}/></button>
+          <button onClick={()=>setView("hours")}     aria-label="Ore di lavoro" style={{...S.pill,cursor:"pointer",background:view==="hours"?BRAND_BLACK:"#f0f0ea",color:view==="hours"?BRAND_YELLOW:"#666",padding:"8px 10px"}}><Icon name="clock" size={18}/></button>
           <div style={{position:"relative"}}>
-            <button onClick={()=>setView("requests")} style={{...S.pill,cursor:"pointer",background:view==="requests"?"#dc2626":"#f0f0ea",color:view==="requests"?"#fff":"#aaa"}}>🔔</button>
+            <button onClick={()=>setView("requests")} aria-label="Richieste" style={{...S.pill,cursor:"pointer",background:view==="requests"?"#dc2626":"#f0f0ea",color:view==="requests"?"#fff":"#666",padding:"8px 10px"}}><Icon name="bell" size={18}/></button>
             {pendingReq > 0 && (
-              <span style={{position:"absolute",top:-5,right:-5,background:"#dc2626",color:"#fff",borderRadius:"50%",minWidth:18,height:18,padding:"0 4px",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",boxShadow:"0 1px 2px #00000033",letterSpacing:0}}>{pendingReq}</span>
+              <span style={{position:"absolute",top:-5,right:-5,background:"#dc2626",color:"#fff",borderRadius:999,minWidth:18,height:18,padding:"0 5px",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",boxShadow:"0 1px 2px #00000033"}}>{pendingReq}</span>
             )}
           </div>
-          <button onClick={()=>setView("export")}    style={{...S.pill,cursor:"pointer",background:view==="export"?"#2563eb":"#f0f0ea",color:view==="export"?"#fff":"#aaa"}}>AI</button>
+          <button onClick={()=>setView("export")}    aria-label="Export AI" style={{...S.pill,cursor:"pointer",background:view==="export"?"#2563eb":"#f0f0ea",color:view==="export"?"#fff":"#666",padding:"8px 10px"}}><Icon name="ai" size={18}/></button>
         </div>
       </div>
 
       {/* Staff chips */}
       {view!=="checklist" && view!=="hours" && view!=="requests" && (
       <div style={{padding:"10px 14px",display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-        <button onClick={handleAddBagnino} title="Crea un nuovo profilo bagnino vuoto" style={{background:"#16a34a",border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:11,fontWeight:800,color:"#fff",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",letterSpacing:0.3}}>
+        <button onClick={handleAddBagnino} title="Crea un nuovo profilo bagnino vuoto" style={{background:"#16a34a",border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:11,fontWeight:800,color:"#fff",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",letterSpacing:0.3}}>
           + Nuovo bagnino
         </button>
-        <button onClick={()=>setMergeOpen(true)} title="Unisci due nomi duplicati in uno" style={{background:"#fff",border:"2px dashed #aaa",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontWeight:700,color:"#666",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
+        <button onClick={()=>setMergeOpen(true)} title="Unisci due nomi duplicati in uno" style={{background:"#fff",border:"2px dashed #aaa",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontWeight:700,color:"#666",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
           🔀 Unisci duplicati
         </button>
         {data.map(r=>{
@@ -2694,17 +2898,17 @@ function Admin({ onBack }) {
       {/* Confirm delete modal */}
       {confirmDelete && (
         <div style={{position:"fixed",inset:0,background:"#00000060",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:24}}>
-          <div style={{background:"#fff",borderRadius:14,padding:"28px 24px",maxWidth:320,width:"100%",boxShadow:"0 8px 32px #00000030",fontFamily:"'Josefin Sans',sans-serif"}}>
+          <div style={{background:"#fff",borderRadius:14,padding:"28px 24px",maxWidth:320,width:"100%",boxShadow:"0 8px 32px #00000030",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>
             <div style={{fontSize:32,textAlign:"center",marginBottom:12}}>🗑️</div>
             <div style={{color:"#1a1a1a",fontSize:15,fontWeight:800,textAlign:"center",marginBottom:8}}>Elimina bagnino</div>
             <div style={{color:"#888",fontSize:13,textAlign:"center",marginBottom:24,lineHeight:1.6}}>
               Vuoi eliminare tutti i dati di<br/><strong style={{color:"#1a1a1a"}}>{confirmDelete}</strong>?<br/>L'operazione non è reversibile.
             </div>
             <div style={{display:"flex",gap:10}}>
-              <button onClick={()=>setConfirmDelete(null)} style={{flex:1,padding:"11px",background:"#f0f0ea",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",color:"#888"}}>
+              <button onClick={()=>setConfirmDelete(null)} style={{flex:1,padding:"11px",background:"#f0f0ea",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",color:"#888"}}>
                 Annulla
               </button>
-              <button onClick={()=>handleDelete(confirmDelete)} style={{flex:1,padding:"11px",background:"#e63946",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",color:"#fff"}}>
+              <button onClick={()=>handleDelete(confirmDelete)} style={{flex:1,padding:"11px",background:"#e63946",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",color:"#fff"}}>
                 Elimina
               </button>
             </div>
@@ -2853,32 +3057,39 @@ function Admin({ onBack }) {
   );
 }
 
-// ─── STYLES ───────────────────────────────────────────────────────────────
+// ─── STYLES (ASC Hotel brand) ─────────────────────────────────────────────
+// Brand palette: giallo #F5C200, nero #1a1a1a, bianco #ffffff
+// Mobile-first: max-width 430px, touch targets 48px, padding 16px, safe-area
+const FONT_STACK = "'Inter',system-ui,-apple-system,sans-serif";
+const BRAND_YELLOW = "#F5C200";
+const BRAND_BLACK  = "#1a1a1a";
+const BG_LIGHT     = "#f5f5f0";
+
 const S = {
-  page:    {minHeight:"100vh",background:"#f5f5f0",fontFamily:"'Josefin Sans',sans-serif",display:"flex",flexDirection:"column"},
-  bar:     {background:"#fff",padding:"14px 18px",display:"flex",alignItems:"center",gap:10,borderBottom:"3px solid #F5C200",boxShadow:"0 2px 8px #0000000a"},
-  barLabel:{color:"#c79500",fontSize:9,fontWeight:700,letterSpacing:2,textTransform:"uppercase"},
-  barName: {color:"#1a1a1a",fontSize:19,fontWeight:800,lineHeight:1.1},
-  pill:    {background:"#f0f0ea",color:"#888",fontSize:9,fontWeight:700,padding:"4px 10px",borderRadius:20,flexShrink:0,letterSpacing:1},
-  back:    {background:"none",border:"none",color:"#1a1a1a",fontSize:22,cursor:"pointer",paddingRight:8},
-  infoBox: {display:"flex",alignItems:"center",gap:12,padding:"14px 18px",background:"#fffbea",border:"1px solid #F5C200",margin:"10px 14px",borderRadius:12},
-  infoTitle:{color:"#1a1a1a",fontSize:13,fontWeight:700,marginBottom:2},
-  infoSub: {color:"#888",fontSize:11},
-  tabs:    {display:"flex",gap:6,padding:"0 14px",overflowX:"auto"},
-  tab:     {padding:"6px 14px",borderRadius:20,border:"2px solid #e0e0d8",background:"#fff",color:"#aaa",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",whiteSpace:"nowrap",position:"relative",flexShrink:0},
-  tabOn:   {border:"2px solid #F5C200",background:"#F5C200",color:"#1a1a1a"},
-  badge:   {position:"absolute",top:-6,right:-6,borderRadius:"50%",width:15,height:15,fontSize:8,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,color:"#fff"},
-  cal:     {padding:"10px 8px 90px",flex:1},
-  calTitle:{color:"#1a1a1a",fontSize:15,fontWeight:800,padding:"6px 8px 8px",letterSpacing:0.5},
-  row:     {display:"flex",gap:2,marginBottom:2},
-  hdr:     {flex:1,textAlign:"center",fontSize:8,fontWeight:800,color:"#aaa",padding:"4px 0",background:"#e8e8e2",borderRadius:3,letterSpacing:0.5},
+  page:    {minHeight:"100dvh",background:BG_LIGHT,fontFamily:FONT_STACK,display:"flex",flexDirection:"column",paddingBottom:"env(safe-area-inset-bottom)",color:BRAND_BLACK,letterSpacing:"-0.005em"},
+  bar:     {background:"#fff",padding:"16px",display:"flex",alignItems:"center",gap:12,borderBottom:`2px solid ${BRAND_YELLOW}`,minHeight:64,paddingTop:"max(16px, env(safe-area-inset-top))"},
+  barLabel:{color:"#888",fontSize:10,fontWeight:600,letterSpacing:1.5,textTransform:"uppercase"},
+  barName: {color:BRAND_BLACK,fontSize:18,fontWeight:700,lineHeight:1.2,marginTop:2},
+  pill:    {background:"#f0f0ea",color:"#666",fontSize:13,fontWeight:600,padding:"8px 12px",borderRadius:10,flexShrink:0,letterSpacing:0,border:"none",minHeight:36,display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6},
+  back:    {background:"#f5f5f0",border:"none",color:BRAND_BLACK,cursor:"pointer",width:40,height:40,minWidth:40,borderRadius:10,display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0},
+  infoBox: {display:"flex",alignItems:"center",gap:12,padding:"16px",background:"#fffbea",border:`1px solid ${BRAND_YELLOW}`,margin:"12px 16px",borderRadius:14},
+  infoTitle:{color:BRAND_BLACK,fontSize:14,fontWeight:700,marginBottom:2},
+  infoSub: {color:"#666",fontSize:12,lineHeight:1.45},
+  tabs:    {display:"flex",gap:6,padding:"0 16px",overflowX:"auto",scrollbarWidth:"none"},
+  tab:     {padding:"10px 16px",borderRadius:10,border:"1.5px solid #e0e0d8",background:"#fff",color:"#666",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:FONT_STACK,whiteSpace:"nowrap",position:"relative",flexShrink:0,minHeight:40},
+  tabOn:   {border:`1.5px solid ${BRAND_BLACK}`,background:BRAND_BLACK,color:BRAND_YELLOW},
+  badge:   {position:"absolute",top:-6,right:-6,borderRadius:999,minWidth:18,height:18,padding:"0 5px",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:"#fff"},
+  cal:     {padding:"10px 16px 90px",flex:1},
+  calTitle:{color:BRAND_BLACK,fontSize:16,fontWeight:700,padding:"8px 4px 10px",letterSpacing:"-0.01em"},
+  row:     {display:"flex",gap:3,marginBottom:3},
+  hdr:     {flex:1,textAlign:"center",fontSize:10,fontWeight:700,color:"#888",padding:"6px 0",background:"#fff",borderRadius:6,letterSpacing:0.5,border:"1px solid #ececec"},
   hdrWE:   {color:"#c79500"},
-  cell:    {flex:1,aspectRatio:"1",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#fff",borderRadius:6,border:"2px solid #e8e8e2",cursor:"pointer",position:"relative",minHeight:36,gap:1,boxShadow:"0 1px 3px #0000000a"},
-  cellWE:  {background:"#fffbea",border:"2px solid #f5e070"},
-  cellOff: {background:"#fff0f0",border:"2px solid #fca5a5"},
-  cellNum: {fontSize:16,fontWeight:800,color:"#1a1a1a",lineHeight:1},
-  footer:  {position:"fixed",bottom:0,left:0,right:0,padding:"10px 14px",background:"#fff",borderTop:"1px solid #e8e8e2",display:"flex",flexDirection:"column",gap:6,boxShadow:"0 -2px 12px #0000000d"},
-  btnY:    {padding:"13px",background:"#F5C200",color:"#1a1a1a",border:"none",borderRadius:10,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif"},
+  cell:    {flex:1,aspectRatio:"1",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#fff",borderRadius:8,border:"1.5px solid #e8e8e2",cursor:"pointer",position:"relative",minHeight:44,gap:1},
+  cellWE:  {background:"#fffbea",border:"1.5px solid #f5e070"},
+  cellOff: {background:"#ffe8ec",border:"1.5px solid #f9a8b4"},
+  cellNum: {fontSize:16,fontWeight:700,color:BRAND_BLACK,lineHeight:1},
+  footer:  {position:"sticky",bottom:0,left:0,right:0,padding:"12px 16px max(12px, env(safe-area-inset-bottom))",background:"#fff",borderTop:"1px solid #e8e8e2",display:"flex",flexDirection:"column",gap:8,boxShadow:"0 -2px 12px #0000000d",zIndex:10},
+  btnY:    {padding:"14px",background:BRAND_YELLOW,color:BRAND_BLACK,border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:FONT_STACK,minHeight:48,letterSpacing:"-0.005em"},
 };
 
 // ─── APP ──────────────────────────────────────────────────────────────────
@@ -2962,34 +3173,47 @@ export default function App() {
   if(screen==="admin")     return <Admin onBack={()=>{ loadBagniniNames(); setScreen("home"); }}/>;
 
   if(screen==="adminLogin") return (
-    <div style={{minHeight:"100vh",background:"#f5f5f0",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Josefin Sans',sans-serif",padding:24}}>
+    <div style={{minHeight:"100vh",background:"#f5f5f0",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',system-ui,-apple-system,sans-serif",padding:24}}>
       <div style={{color:"#c79500",fontSize:10,letterSpacing:3,fontWeight:700,marginBottom:6}}>AREA RISERVATA</div>
       <div style={{color:"#1a1a1a",fontSize:24,fontWeight:800,marginBottom:28}}>Admin · Piscina 2026</div>
       <input type="password" placeholder="Codice accesso" value={adminPw} onChange={e=>setAdminPw(e.target.value)}
         onKeyDown={e=>e.key==="Enter"&&tryAdmin()}
-        style={{width:"100%",maxWidth:300,padding:"12px 16px",borderRadius:8,border:"2px solid #e0e0d8",background:"#fff",color:"#1a1a1a",fontSize:15,fontFamily:"'Josefin Sans',sans-serif",outline:"none",marginBottom:8,boxSizing:"border-box"}}/>
+        style={{width:"100%",maxWidth:300,padding:"12px 16px",borderRadius:8,border:"2px solid #e0e0d8",background:"#fff",color:"#1a1a1a",fontSize:15,fontFamily:"'Inter',system-ui,-apple-system,sans-serif",outline:"none",marginBottom:8,boxSizing:"border-box"}}/>
       {adminErr && <div style={{color:"#e63946",fontSize:12,marginBottom:8}}>{adminErr}</div>}
-      <button onClick={tryAdmin} style={{width:"100%",maxWidth:300,padding:13,background:"#F5C200",color:"#1a1a1a",border:"none",borderRadius:8,fontSize:15,fontWeight:800,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>Accedi</button>
-      <button onClick={()=>setScreen("home")} style={{marginTop:14,background:"none",border:"none",color:"#aaa",cursor:"pointer",fontSize:12,fontFamily:"'Josefin Sans',sans-serif"}}>← Indietro</button>
+      <button onClick={tryAdmin} style={{width:"100%",maxWidth:300,padding:13,background:"#F5C200",color:"#1a1a1a",border:"none",borderRadius:8,fontSize:15,fontWeight:800,cursor:"pointer",fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>Accedi</button>
+      <button onClick={()=>setScreen("home")} style={{marginTop:14,background:"none",border:"none",color:"#aaa",cursor:"pointer",fontSize:12,fontFamily:"'Inter',system-ui,-apple-system,sans-serif"}}>← Indietro</button>
     </div>
   );
 
   // HOME
   return (
-    <div style={{minHeight:"100vh",background:"#f5f5f0",fontFamily:"'Josefin Sans',sans-serif",display:"flex",flexDirection:"column"}}>
-      <div style={{background:"#1a1a1a",padding:"44px 26px 36px",borderBottom:"3px solid #F5C200"}}>
-        <div style={{color:"#F5C200",fontSize:10,fontWeight:700,letterSpacing:3,textTransform:"uppercase",marginBottom:6}}>ASC Hotel · Piscina</div>
-        <div style={{color:"#fff",fontSize:38,fontWeight:800,lineHeight:1.0,marginBottom:8}}>Turni<br/>Estivi 2026</div>
-        <div style={{color:"#888",fontSize:12,letterSpacing:1}}>GIU · LUG · AGO · SET</div>
+    <div style={S.page}>
+      {/* Hero gradient header */}
+      <div style={{
+        background:`linear-gradient(180deg, ${BRAND_BLACK} 0%, #2a2a2a 50%, ${BRAND_BLACK} 100%)`,
+        padding:"max(56px, calc(env(safe-area-inset-top) + 40px)) 24px 44px",
+        borderBottom:`3px solid ${BRAND_YELLOW}`,
+        position:"relative",overflow:"hidden",
+      }}>
+        {/* Decorative diagonal stripe */}
+        <div style={{position:"absolute",top:-20,right:-20,width:140,height:140,borderRadius:"50%",background:`${BRAND_YELLOW}10`,filter:"blur(40px)"}}/>
+        <div style={{position:"relative"}}>
+          <div style={{color:BRAND_YELLOW,fontSize:11,fontWeight:700,letterSpacing:4,textTransform:"uppercase",marginBottom:10}}>ASC Hotel</div>
+          <div style={{color:"#fff",fontSize:34,fontWeight:800,lineHeight:1.05,letterSpacing:"-0.02em"}}>Piscina<br/>Pool Staff</div>
+          <div style={{color:"#999",fontSize:13,letterSpacing:0.5,marginTop:14,fontWeight:500}}>Turni Estivi 2026 · GIU·LUG·AGO·SET</div>
+        </div>
       </div>
-      <div style={{padding:"32px 22px",flex:1,display:"flex",flexDirection:"column",gap:18}}>
-        <div>
-          <div style={{color:"#888",fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Seleziona il tuo nome</div>
+
+      <div style={{padding:"32px 16px max(24px, env(safe-area-inset-bottom))",flex:1,display:"flex",flexDirection:"column",gap:20}}>
+        {/* Card input nome */}
+        <div style={{background:"#fff",borderRadius:16,padding:"20px",boxShadow:"0 4px 16px #0000000a",border:"1px solid #ececec"}}>
+          <div style={{color:"#666",fontSize:11,fontWeight:600,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>Chi sei?</div>
           {bagniniLoading ? (
-            <div style={{color:"#aaa",fontSize:13,padding:"14px 16px",border:"2px solid #e0e0d8",borderRadius:10,background:"#fff"}}>Caricamento…</div>
+            <div style={{color:"#aaa",fontSize:14,padding:"14px",borderRadius:12,background:"#f5f5f0"}}>Caricamento…</div>
           ) : (bagniniLoadError || bagniniNames.length === 0) ? (
-            <div style={{color:"#b91c1c",fontSize:13,padding:"14px 16px",border:"2px solid #fca5a5",borderRadius:10,background:"#fef2f2",lineHeight:1.55}}>
-              ⚠ Nessun bagnino registrato — contatta l'admin per creare il tuo profilo.
+            <div style={{display:"flex",alignItems:"flex-start",gap:10,color:"#b91c1c",fontSize:13,padding:"14px",borderRadius:12,background:"#fef2f2",border:"1px solid #fca5a5",lineHeight:1.55}}>
+              <Icon name="alert" size={18}/>
+              <span><strong>Nessun bagnino registrato.</strong><br/>Contatta l'admin per creare il tuo profilo.</span>
             </div>
           ) : (
             <>
@@ -2997,20 +3221,50 @@ export default function App() {
                 value={name}
                 onChange={e => handleSelectName(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleStart()}
-                style={{width:"100%",padding:"14px 16px",borderRadius:10,border:`2px solid ${nameErr?"#e63946":"#e0e0d8"}`,background:"#fff",color:name?"#1a1a1a":"#888",fontSize:16,fontFamily:"'Josefin Sans',sans-serif",outline:"none",boxSizing:"border-box",boxShadow:"0 1px 4px #0000000a",cursor:"pointer",fontWeight:name?700:400}}
+                style={{
+                  width:"100%",padding:"16px",borderRadius:12,
+                  border:`2px solid ${nameErr?"#e63946":"#e0e0d8"}`,
+                  background:"#fafaf8",color:name?BRAND_BLACK:"#888",
+                  fontSize:16,fontFamily:FONT_STACK,outline:"none",
+                  boxSizing:"border-box",cursor:"pointer",
+                  fontWeight:name?700:500,minHeight:56,
+                  appearance:"none",WebkitAppearance:"none",
+                  backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpath d='M1 1l5 5 5-5'/%3E%3C/svg%3E")`,
+                  backgroundRepeat:"no-repeat",backgroundPosition:"right 16px center",
+                  paddingRight:"44px",
+                }}
               >
-                <option value="">— Chi sei? —</option>
+                <option value="">— Seleziona —</option>
                 {bagniniNames.map(n => <option key={n} value={n}>{n}</option>)}
               </select>
-              {nameErr && <div style={{color:"#e63946",fontSize:12,marginTop:5}}>{nameErr}</div>}
-              <div style={{color:"#bbb",fontSize:11,marginTop:6}}>Solo i nomi registrati dall'admin sono selezionabili.</div>
+              {nameErr && (
+                <div style={{display:"flex",alignItems:"center",gap:6,color:"#e63946",fontSize:13,marginTop:8,fontWeight:500}}>
+                  <Icon name="alert" size={14}/>{nameErr}
+                </div>
+              )}
+              <div style={{color:"#888",fontSize:12,marginTop:10,lineHeight:1.5}}>Solo i nomi registrati dall'admin sono selezionabili.</div>
             </>
           )}
         </div>
-        <button onClick={handleStart} disabled={!name || bagniniLoading} style={{...S.btnY,fontSize:16,opacity:(!name||bagniniLoading)?0.5:1,cursor:(!name||bagniniLoading)?"not-allowed":"pointer"}}>Inizia →</button>
-        <div style={{borderTop:"1px solid #e0e0d8",paddingTop:22}}>
-          <button onClick={()=>setScreen("adminLogin")} style={{width:"100%",padding:12,background:"transparent",color:"#1a1a1a",border:"2px solid #e0e0d8",borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif"}}>
-            🔒 Area Admin
+
+        <button onClick={handleStart} disabled={!name || bagniniLoading} style={{
+          ...S.btnY,fontSize:16,
+          opacity:(!name||bagniniLoading)?0.4:1,
+          cursor:(!name||bagniniLoading)?"not-allowed":"pointer",
+          display:"inline-flex",alignItems:"center",justifyContent:"center",gap:8,
+          boxShadow:(!name||bagniniLoading)?"none":"0 4px 16px #F5C20040",
+        }}>Inizia<Icon name="arrowLeft" size={18} style={{transform:"rotate(180deg)"}}/></button>
+
+        <div style={{marginTop:"auto",paddingTop:24}}>
+          <button onClick={()=>setScreen("adminLogin")} style={{
+            width:"100%",padding:"14px",
+            background:"transparent",color:"#888",
+            border:"1.5px solid #e0e0d8",borderRadius:12,
+            fontSize:13,fontWeight:600,cursor:"pointer",
+            fontFamily:FONT_STACK,minHeight:48,
+            display:"inline-flex",alignItems:"center",justifyContent:"center",gap:8,
+          }}>
+            <Icon name="lock" size={16}/>Area Admin
           </button>
         </div>
       </div>
