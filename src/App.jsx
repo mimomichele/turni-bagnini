@@ -21,6 +21,15 @@ const H_ADMIN = {
   "Prefer": "return=representation",
 };
 
+// ─── COWORKING SUPABASE (progetto separato) ────────────────────────────────
+const CW_URL = import.meta.env.VITE_COWORKING_SUPABASE_URL;
+const CW_KEY = import.meta.env.VITE_COWORKING_ANON_KEY;
+const H_CW = {
+  "Content-Type": "application/json",
+  "apikey": CW_KEY,
+  "Authorization": `Bearer ${CW_KEY}`,
+};
+
 async function sbGet(nome) {
   const r = await fetch(`${SB_URL}/rest/v1/${TABLE}?nome=eq.${encodeURIComponent(nome)}&select=*`, { headers: H });
   const d = await r.json();
@@ -188,6 +197,52 @@ async function roReject(id, nota) {
   if(!r.ok) throw new Error(`PATCH richieste_ore: ${r.status} ${await r.text().catch(()=>"")}`);
   return await r.json();
 }
+// ─── COWORKING BOOKINGS + CHECK-IN ────────────────────────────────────────
+const TABLE_CI = "checkin_ingressi";
+
+// Today's bookings from the separate coworking Supabase project.
+// Joins members via PostgREST embedding to get name + surname.
+async function cwBookingsToday() {
+  if (!CW_URL || !CW_KEY) {
+    throw new Error("Manca la configurazione coworking (VITE_COWORKING_SUPABASE_URL / VITE_COWORKING_ANON_KEY).");
+  }
+  const today = todayISO();
+  const r = await fetch(
+    `${CW_URL}/rest/v1/bookings?date=eq.${today}&status=neq.cancelled` +
+    `&select=id,date,status,created_at,members(name,surname)` +
+    `&order=created_at.asc`,
+    { headers: H_CW }
+  );
+  if (!r.ok) {
+    const txt = await r.text().catch(()=>"");
+    throw new Error(`Errore lettura coworking (${r.status}): ${txt || "verifica RLS su bookings/members"}`);
+  }
+  return await r.json();
+}
+
+async function ciTodayCheckins() {
+  const r = await fetch(
+    `${SB_URL}/rest/v1/${TABLE_CI}?data=eq.${todayISO()}&select=*&order=ora_checkin.desc`,
+    { headers: H }
+  );
+  if (!r.ok) throw new Error(`Errore check-ins: ${r.status}`);
+  return await r.json();
+}
+
+async function ciCheckin({ nome_membro, bagnino_nome }) {
+  const body = JSON.stringify({
+    nome_membro,
+    bagnino_nome,
+    ora_checkin: new Date().toISOString(),
+  });
+  const r = await fetch(`${SB_URL}/rest/v1/${TABLE_CI}`, { method:"POST", headers: H, body });
+  if (!r.ok) {
+    const txt = await r.text().catch(()=>"");
+    throw new Error(`Errore check-in (${r.status}): ${txt}`);
+  }
+  return (await r.json())?.[0];
+}
+
 // Approve: bump ore on the matching turni_confermati row(s), then flag request as approved.
 async function roApprove(req) {
   const tcBody = JSON.stringify({
@@ -604,7 +659,7 @@ function Done({ name, onEdit }) {
 }
 
 // ─── HUB (dopo login) ─────────────────────────────────────────────────────
-function Hub({ name, onPrefs, onCheck, onMyShifts, onBack }) {
+function Hub({ name, onPrefs, onCheck, onMyShifts, onIngressi, onBack }) {
   return (
     <div style={S.page}>
       <div style={S.bar}>
@@ -614,25 +669,33 @@ function Hub({ name, onPrefs, onCheck, onMyShifts, onBack }) {
           <div style={S.barName}>{name}</div>
         </div>
       </div>
-      <div style={{padding:"24px 22px",display:"flex",flexDirection:"column",gap:14,flex:1}}>
-        <button onClick={onPrefs} style={{padding:"22px 18px",background:"#F5C200",color:"#1a1a1a",border:"none",borderRadius:14,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:14,textAlign:"left",boxShadow:"0 2px 8px #0000000d"}}>
-          <span style={{fontSize:34}}>📝</span>
+      <div style={{padding:"22px 22px 28px",display:"flex",flexDirection:"column",gap:12,flex:1}}>
+        <button onClick={onIngressi} style={{padding:"20px 18px",background:"#0891b2",color:"#fff",border:"none",borderRadius:14,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:14,textAlign:"left",boxShadow:"0 2px 8px #0000000d"}}>
+          <span style={{fontSize:32}}>🏊</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:16,fontWeight:800}}>Ingressi Oggi</div>
+            <div style={{fontSize:11,fontWeight:600,opacity:0.85,marginTop:2}}>Check-in delle prenotazioni coworking</div>
+          </div>
+          <span style={{fontSize:22}}>→</span>
+        </button>
+        <button onClick={onPrefs} style={{padding:"20px 18px",background:"#F5C200",color:"#1a1a1a",border:"none",borderRadius:14,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:14,textAlign:"left",boxShadow:"0 2px 8px #0000000d"}}>
+          <span style={{fontSize:32}}>📝</span>
           <div style={{flex:1}}>
             <div style={{fontSize:16,fontWeight:800}}>Preferenze Turni</div>
             <div style={{fontSize:11,fontWeight:600,opacity:0.7,marginTop:2}}>Assenze e turni preferiti per l'estate 2026</div>
           </div>
           <span style={{fontSize:22}}>→</span>
         </button>
-        <button onClick={onMyShifts} style={{padding:"22px 18px",background:"#2563eb",color:"#fff",border:"none",borderRadius:14,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:14,textAlign:"left",boxShadow:"0 2px 8px #0000000d"}}>
-          <span style={{fontSize:34}}>📅</span>
+        <button onClick={onMyShifts} style={{padding:"20px 18px",background:"#2563eb",color:"#fff",border:"none",borderRadius:14,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:14,textAlign:"left",boxShadow:"0 2px 8px #0000000d"}}>
+          <span style={{fontSize:32}}>📅</span>
           <div style={{flex:1}}>
             <div style={{fontSize:16,fontWeight:800}}>I miei turni</div>
             <div style={{fontSize:11,fontWeight:600,opacity:0.85,marginTop:2}}>Turni confermati, ore lavorate e richieste</div>
           </div>
           <span style={{fontSize:22}}>→</span>
         </button>
-        <button onClick={onCheck} style={{padding:"22px 18px",background:"#16a34a",color:"#fff",border:"none",borderRadius:14,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:14,textAlign:"left",boxShadow:"0 2px 8px #0000000d"}}>
-          <span style={{fontSize:34}}>✅</span>
+        <button onClick={onCheck} style={{padding:"20px 18px",background:"#16a34a",color:"#fff",border:"none",borderRadius:14,cursor:"pointer",fontFamily:"'Josefin Sans',sans-serif",display:"flex",alignItems:"center",gap:14,textAlign:"left",boxShadow:"0 2px 8px #0000000d"}}>
+          <span style={{fontSize:32}}>✅</span>
           <div style={{flex:1}}>
             <div style={{fontSize:16,fontWeight:800}}>Checklist Giornaliera</div>
             <div style={{fontSize:11,fontWeight:600,opacity:0.85,marginTop:2}}>Task ingresso/uscita e azioni periodiche</div>
@@ -917,6 +980,143 @@ function MyShifts({ name, onBack }) {
           onSubmitted={async () => { setEditShift(null); await load(); }}
         />
       )}
+    </div>
+  );
+}
+
+// ─── INGRESSI OGGI (bagnino) ──────────────────────────────────────────────
+function IngressiOggi({ name, onBack }) {
+  const [bookings, setBookings] = useState([]);
+  const [checkins, setCheckins] = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [busyId, setBusyId]     = useState(null);
+  const [error, setError]       = useState("");
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const [bs, ci] = await Promise.all([cwBookingsToday(), ciTodayCheckins()]);
+      setBookings(Array.isArray(bs) ? bs : []);
+      setCheckins(Array.isArray(ci) ? ci : []);
+    } catch(e) {
+      setError(e.message || "Errore caricamento dati");
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  function fullName(b) {
+    if (!b.members) return "Membro sconosciuto";
+    return `${b.members.name || ""} ${b.members.surname || ""}`.trim() || "—";
+  }
+  // Latest check-in for that member name today (by full name)
+  function checkinFor(b) {
+    const fn = fullName(b);
+    return checkins
+      .filter(c => c.nome_membro === fn)
+      .sort((a,b) => new Date(b.ora_checkin) - new Date(a.ora_checkin))[0];
+  }
+
+  async function doCheckin(b) {
+    if (busyId) return;
+    const fn = fullName(b);
+    if (!fn || fn === "—") return;
+    setBusyId(b.id);
+    try {
+      await ciCheckin({ nome_membro: fn, bagnino_nome: name });
+      await load();
+    } catch(e) {
+      window.alert(e.message || "Errore check-in");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const todayLabel = new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
+  const checkedCount = bookings.filter(b => checkinFor(b)).length;
+
+  return (
+    <div style={S.page}>
+      <div style={S.bar}>
+        <button onClick={onBack} style={S.back}>←</button>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={S.barLabel}>Ingressi Oggi</div>
+          <div style={{...S.barName,textTransform:"capitalize"}}>{todayLabel}</div>
+        </div>
+        <button onClick={load} disabled={loading} title="Aggiorna" style={{...S.pill,cursor:loading?"wait":"pointer",background:"#1a1a1a",color:"#F5C200",fontSize:14,padding:"6px 12px"}}>🔄</button>
+      </div>
+
+      {/* Counter */}
+      <div style={{padding:"10px 14px"}}>
+        <div style={{background:"#1a1a1a",color:"#fff",borderRadius:12,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",fontFamily:"'Josefin Sans',sans-serif",boxShadow:"0 2px 8px #0000000d"}}>
+          <div>
+            <div style={{fontSize:10,color:"#F5C200",fontWeight:800,letterSpacing:1.5}}>PRENOTATI OGGI</div>
+            <div style={{fontSize:11,color:"#aaa",marginTop:2}}>day-use coworking</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:30,fontWeight:800,color:"#22c55e",lineHeight:1}}>
+              {checkedCount}<span style={{color:"#aaa",fontSize:18,marginLeft:4,fontWeight:700}}>/{bookings.length}</span>
+            </div>
+            <div style={{fontSize:10,color:"#aaa",marginTop:2,letterSpacing:0.5}}>entrati su totale</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Error banner */}
+      {error && (
+        <div style={{margin:"0 14px 10px",background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:10,padding:"10px 12px",fontSize:11,color:"#b91c1c",lineHeight:1.5,fontFamily:"'Josefin Sans',sans-serif"}}>
+          ⚠ {error}
+        </div>
+      )}
+
+      {/* List */}
+      <div style={{padding:"0 14px 32px",flex:1,display:"flex",flexDirection:"column",gap:8}}>
+        {loading ? (
+          <div style={{padding:"30px",textAlign:"center",color:"#888",fontFamily:"'Josefin Sans',sans-serif"}}>Caricamento prenotazioni…</div>
+        ) : bookings.length === 0 ? (
+          <div style={{padding:"30px",textAlign:"center",color:"#bbb",background:"#fff",borderRadius:12,border:"1px solid #e8e8e2",fontFamily:"'Josefin Sans',sans-serif"}}>
+            Nessuna prenotazione per oggi
+          </div>
+        ) : bookings.map(b => {
+          const fn = fullName(b);
+          const ci = checkinFor(b);
+          const isIn = !!ci;
+          const bookedAt = new Date(b.created_at).toLocaleTimeString("it-IT", { hour:"2-digit", minute:"2-digit" });
+          const inAt    = isIn ? new Date(ci.ora_checkin).toLocaleTimeString("it-IT", { hour:"2-digit", minute:"2-digit" }) : "";
+          return (
+            <div key={b.id} style={{
+              background: isIn ? "#dcfce7" : "#fff",
+              borderRadius: 12,
+              border: `1px solid ${isIn ? "#86efac" : "#e8e8e2"}`,
+              padding: "12px 14px",
+              boxShadow: "0 1px 4px #0000000a",
+              fontFamily: "'Josefin Sans',sans-serif",
+            }}>
+              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:8}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:15,fontWeight:800,color:isIn?"#166534":"#1a1a1a",lineHeight:1.2}}>{fn}</div>
+                  <div style={{fontSize:11,color:"#888",marginTop:3,fontWeight:600}}>Prenotato alle {bookedAt}</div>
+                </div>
+                {b.status === "confirmed" && (
+                  <div style={{background:"#dbeafe",color:"#1d4ed8",border:"1px solid #93c5fd",fontSize:8,fontWeight:800,padding:"2px 7px",borderRadius:10,letterSpacing:0.3,whiteSpace:"nowrap"}}>CONFERMATA</div>
+                )}
+              </div>
+
+              {isIn ? (
+                <div style={{background:"#fff",border:"1px solid #86efac",borderRadius:6,padding:"7px 10px",fontSize:11,color:"#166534",fontWeight:700,lineHeight:1.5}}>
+                  ✓ Entrato alle {inAt} da <strong>{ci.bagnino_nome}</strong>
+                </div>
+              ) : (
+                <button onClick={()=>doCheckin(b)} disabled={busyId===b.id} style={{width:"100%",padding:"11px",background:busyId===b.id?"#aaa":"#16a34a",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:800,cursor:busyId===b.id?"wait":"pointer",fontFamily:"'Josefin Sans',sans-serif",letterSpacing:0.3}}>
+                  {busyId===b.id ? "…" : "✓ Entrato"}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -2750,9 +2950,10 @@ export default function App() {
     else setAdminErr("Codice non corretto");
   }
 
-  if(screen==="hub")       return <Hub name={name.trim()} onPrefs={()=>setScreen("step1")} onCheck={()=>setScreen("checklist")} onMyShifts={()=>setScreen("myshifts")} onBack={()=>setScreen("home")}/>;
+  if(screen==="hub")       return <Hub name={name.trim()} onPrefs={()=>setScreen("step1")} onCheck={()=>setScreen("checklist")} onMyShifts={()=>setScreen("myshifts")} onIngressi={()=>setScreen("ingressi")} onBack={()=>setScreen("home")}/>;
   if(screen==="checklist") return <Checklist name={name.trim()} onBack={()=>setScreen("hub")}/>;
   if(screen==="myshifts")  return <MyShifts  name={name.trim()} onBack={()=>setScreen("hub")}/>;
+  if(screen==="ingressi")  return <IngressiOggi name={name.trim()} onBack={()=>setScreen("hub")}/>;
   if(screen==="step1")     return <StepAbsent name={name.trim()} absent={absent} setAbsent={setAbsent} onNext={()=>setScreen("step2")} bagniniNames={bagniniNames} onNameChange={handleSelectName}/>;
   if(screen==="step2")     return <StepShifts name={name.trim()} absent={absent} shifts={shifts} setShifts={setShifts} onBack={()=>setScreen("step1")} onSubmit={handleSubmit} saving={saving} bagniniNames={bagniniNames} onNameChange={handleSelectName}/>;
   if(screen==="done")      return <Done name={name.trim()} onEdit={()=>setScreen("hub")}/>;
