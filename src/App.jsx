@@ -207,9 +207,11 @@ async function cwBookingsToday() {
     throw new Error("Manca la configurazione coworking (VITE_COWORKING_SUPABASE_URL / VITE_COWORKING_ANON_KEY).");
   }
   const today = todayISO();
+  // bookings has two FKs into members → disambiguate the embed with the
+  // explicit FK constraint name (bookings_member_id_fkey).
   const r = await fetch(
     `${CW_URL}/rest/v1/bookings?date=eq.${today}&status=neq.cancelled` +
-    `&select=id,date,status,created_at,members(name,surname)` +
+    `&select=id,date,status,created_at,members!bookings_member_id_fkey(name,surname)` +
     `&order=created_at.asc`,
     { headers: H_CW }
   );
