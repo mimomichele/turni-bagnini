@@ -26,6 +26,16 @@
         overflow-x: hidden;
         box-shadow: 0 0 32px #00000040;
       }
+      /* Admin on desktop: expand to full width, drop the phone frame.
+         Mobile (<768px) keeps the max-width regardless of admin-mode
+         so bagnini + admin on phone share the same layout. */
+      @media (min-width: 768px) {
+        body.admin-mode #root {
+          max-width: none;
+          box-shadow: none;
+          overflow-x: visible;
+        }
+      }
       input, textarea, select, button { font-family: inherit; }
       input[type="number"] { -moz-appearance: textfield; }
       input[type="number"]::-webkit-outer-spin-button,

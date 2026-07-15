@@ -2155,39 +2155,38 @@ function HoursCalendar({ data, confirmed, reload }) {
               <button key={day} onClick={()=>openEdit(day)} style={{
                 background: needsChoice ? "#fff7ed" : (isConf ? "#dcfce7" : (display.length ? "#fef9c3" : "#fff")),
                 border:`1px solid ${needsChoice?"#fdba74":(isConf?"#86efac":(display.length?"#fde68a":(we?"#f5e070":"#e8e8e2")))}`,
-                borderRadius:8,
-                padding:"6px 4px",
-                display:"flex",flexDirection:"column",gap:3,
-                minHeight:88,minWidth:0,
+                borderRadius:12,
+                padding:"10px 12px",
+                display:"flex",flexDirection:"column",gap:6,
+                minHeight:120,minWidth:0,
                 cursor:"pointer",
-                fontFamily:"'Inter',system-ui,-apple-system,sans-serif",
+                fontFamily:FONT_STACK,
                 textAlign:"left",
                 boxShadow:"0 1px 3px #0000000a",
               }}>
-                <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:3}}>
-                  <div style={{fontSize:15,fontWeight:800,lineHeight:1,color:we?"#c79500":"#1a1a1a"}}>{day}</div>
-                  <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:2}}>
+                <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:6}}>
+                  <div style={{fontSize:22,fontWeight:700,lineHeight:1,color:we?"#c79500":BRAND_BLACK,letterSpacing:"-0.01em"}}>{day}</div>
+                  <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3}}>
                     {conflicts > 0 && (
-                      <div title={needsChoice ? `${conflicts} conferm${conflicts===1?"a":"e"} sullo stesso turno — scegli chi tenere` : `${conflicts} preferenz${conflicts===1?"a":"e"} sovrapposte`} style={{background:"#f97316",color:"#fff",fontSize:8,fontWeight:800,padding:"1px 4px",borderRadius:6,lineHeight:1.1,letterSpacing:0.2,whiteSpace:"nowrap"}}>
-                        ⚠️ {conflicts}
+                      <div title={needsChoice ? `${conflicts} conferm${conflicts===1?"a":"e"} sullo stesso turno — scegli chi tenere` : `${conflicts} preferenz${conflicts===1?"a":"e"} sovrapposte`} style={{background:"#f97316",color:"#fff",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:999,lineHeight:1.2,letterSpacing:0.2,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>
+                        <Icon name="alert" size={10} strokeWidth={2.2}/>{conflicts}
                       </div>
                     )}
-                    <div style={{fontSize:7,fontWeight:800,letterSpacing:0.3,color:isConf?"#166534":"#a16207",lineHeight:1}}>
+                    <div style={{fontSize:10,fontWeight:700,letterSpacing:0.3,color:isConf?"#166534":"#a16207",lineHeight:1}}>
                       {isConf ? `✓ ${display.length}` : (display.length ? `~ ${display.length}` : "—")}
                     </div>
                   </div>
                 </div>
-                <div style={{flex:1,display:"flex",flexDirection:"column",gap:1,minWidth:0}}>
-                  {display.slice(0,4).map((a,i)=>(
-                    <div key={i} style={{fontSize:8,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>
-                      <span style={{fontWeight:800,color:isConf?"#166534":"#666"}}>{a.bagnino.split(" ")[0]}</span>
-                      <span style={{color:"#999",marginLeft:2}}>·{a.ore}h</span>
+                <div style={{flex:1,display:"flex",flexDirection:"column",gap:3,minWidth:0}}>
+                  {display.map((a,i)=>(
+                    <div key={i} style={{fontSize:12,lineHeight:1.35,minWidth:0,display:"flex",alignItems:"baseline",gap:6}}>
+                      <span style={{fontWeight:600,color:isConf?"#166534":"#666",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.bagnino}</span>
+                      <span style={{color:"#999",fontSize:11,fontWeight:500,whiteSpace:"nowrap"}}>{a.ore}h</span>
                     </div>
                   ))}
-                  {display.length>4 && <div style={{fontSize:7,color:"#aaa"}}>+{display.length-4}…</div>}
                   {needsChoice && (
-                    <div style={{fontSize:8,color:"#c2410c",fontWeight:800,marginTop:2,letterSpacing:0.2,lineHeight:1.1}}>
-                      ⚠ Devi scegliere
+                    <div style={{fontSize:11,color:"#c2410c",fontWeight:700,marginTop:4,letterSpacing:0.2,lineHeight:1.3,display:"inline-flex",alignItems:"center",gap:4}}>
+                      <Icon name="alert" size={12} strokeWidth={2.2}/>Devi scegliere
                     </div>
                   )}
                 </div>
@@ -3130,6 +3129,15 @@ export default function App() {
   // Refresh names whenever we land on the home/hub (admin may have just added/merged)
   useEffect(() => {
     if (screen === "home" || screen === "hub") loadBagniniNames();
+  }, [screen]);
+
+  // Toggle body.admin-mode: on desktop this expands #root to full width so
+  // admin can use the whole screen. On mobile the media-query does not
+  // match, so the bagnino/admin layout stays identical to phone view.
+  useEffect(() => {
+    const isAdmin = screen === "admin";
+    document.body.classList.toggle("admin-mode", isAdmin);
+    return () => document.body.classList.remove("admin-mode");
   }, [screen]);
 
   // Switching name reloads that bagnino's saved preferences from Supabase.
